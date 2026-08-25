@@ -12,6 +12,11 @@ The live file is `Documents/travel-library.json`. On first launch, if that file 
 one-trip library. The new file is written atomically and decoded again for verification. The
 legacy file is retained as a migration backup.
 
+Individual trips can be exchanged independently as versioned `.trip` directory
+packages. Import never silently overwrites an existing root UUID. Import-as-copy
+changes only the aggregate root UUID because every nested UUID is scoped to its Trip;
+replace retains the original root and all nested relationship identifiers.
+
 All feature mutations retain the copy → mutate → assign-back pattern. The compatibility property
 `TripStore.trip` reads and replaces only the selected trip, so Today, Trip, Map, OCR saves and
 activity additions remain isolated by trip without introducing a second store.

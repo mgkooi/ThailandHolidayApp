@@ -13,6 +13,7 @@ struct TodayView: View {
     @State private var nearbyLocation: SearchLocation?
     @State private var nearbyRestaurants: [DiscoveryResult] = []
     @State private var nearbyState: DiscoveryLoadState = .idle
+    @State private var navigationDirection = 1
 
     init(selectedDate: Date? = nil, now: () -> Date = Date.init) {
         _selectedDate = State(initialValue: TodayDateSelection.initialDate(selectedDate: selectedDate, now: now()))
@@ -71,8 +72,8 @@ struct TodayView: View {
                     date: selectedDate,
                     locationName: todayLocationName(accommodation: accommodation, destination: accommodationDestination),
                     timeZone: trip.timeZone,
-                    canGoToPreviousDay: true,
-                    canGoToNextDay: true,
+                    canGoToPreviousDay: TodayDateSelection.canMove(selectedDate, by: -1, in: trip),
+                    canGoToNextDay: TodayDateSelection.canMove(selectedDate, by: 1, in: trip),
                     previousDayAction: { moveSelectedDate(by: -1, in: trip) },
                     nextDayAction: { moveSelectedDate(by: 1, in: trip) },
                     dateAction: { isCalendarPresented = true },
@@ -119,6 +120,14 @@ struct TodayView: View {
             .padding(.bottom, 32)
         }
         .background(Color.travelBackground)
+        .id(TripCalendar.calendar(in: trip.timeZone).startOfDay(for: selectedDate))
+        .transition(.asymmetric(insertion: .move(edge: navigationDirection > 0 ? .trailing : .leading).combined(with: .opacity),
+                                removal: .move(edge: navigationDirection > 0 ? .leading : .trailing).combined(with: .opacity)))
+        .simultaneousGesture(DragGesture(minimumDistance: 18).onEnded { value in
+            guard let offset = TodaySwipeNavigation.dayOffset(horizontal: value.translation.width,
+                                                               vertical: value.translation.height) else { return }
+            moveSelectedDate(by: offset, in: trip)
+        })
         .refreshable { await refreshToday() }
         .navigationBarTitleDisplayMode(.inline)
         .sheet(isPresented: $isCalendarPresented) {
@@ -176,9 +185,9 @@ struct TodayView: View {
     }
 
     private func moveSelectedDate(by dayOffset: Int, in trip: Trip) {
-        let calendar = TripCalendar.calendar(in: trip.timeZone)
-        guard let date = calendar.date(byAdding: .day, value: dayOffset, to: selectedDate) else { return }
-        selectedDate = date
+        guard let date = TodayDateSelection.moving(selectedDate, by: dayOffset, in: trip) else { return }
+        navigationDirection = dayOffset
+        withAnimation(.easeInOut(duration: 0.22)) { selectedDate = date }
     }
 
     private func planningSection(activities: [Activity], restaurants: [RestaurantReservation], timeZone: TimeZone) -> some View {
@@ -350,6 +359,23 @@ struct TodayDateSelection {
     static func initialDate(selectedDate: Date?, now: Date) -> Date { selectedDate ?? now }
     static func moving(_ date: Date, by days: Int, timeZone: TimeZone) -> Date {
         TripCalendar.calendar(in: timeZone).date(byAdding: .day, value: days, to: date) ?? date
+    }
+    static func moving(_ date: Date, by days: Int, in trip: Trip) -> Date? {
+        let calendar = TripCalendar.calendar(in: trip.timeZone)
+        guard let candidate = calendar.date(byAdding: .day, value: days, to: date) else { return nil }
+        let day = calendar.startOfDay(for: candidate)
+        guard day >= calendar.startOfDay(for: trip.startDate),
+              day <= calendar.startOfDay(for: trip.endDate) else { return nil }
+        return candidate
+    }
+    static func canMove(_ date: Date, by days: Int, in trip: Trip) -> Bool { moving(date, by: days, in: trip) != nil }
+}
+
+struct TodaySwipeNavigation {
+    static let minimumDistance: CGFloat = 60
+    static func dayOffset(horizontal: CGFloat, vertical: CGFloat) -> Int? {
+        guard abs(horizontal) >= minimumDistance, abs(horizontal) > abs(vertical) else { return nil }
+        return horizontal < 0 ? 1 : -1
     }
 }
 

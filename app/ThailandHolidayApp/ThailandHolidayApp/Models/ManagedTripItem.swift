@@ -35,6 +35,8 @@ enum TripItemKind: String, CaseIterable, Identifiable {
 }
 
 extension TripItemKind {
+    var supportsMedia: Bool { self == .flight || self == .accommodation || self == .activity }
+
     var showsGenericDate: Bool {
         switch self {
         case .restaurant, .activity, .other: true
@@ -120,5 +122,34 @@ enum ManagedTripItem: Identifiable, Equatable {
         case .activity(let value): return .activity(value.updating(attachmentFilename: .some(filename)))
         case .other(var value): value.attachmentFilename = filename; return .other(value)
         }
+    }
+
+    var mediaItems: [TripMedia] {
+        switch self {
+        case .flight(let value): value.mediaItems
+        case .accommodation(let value): value.mediaItems
+        case .activity(let value): value.mediaItems
+        default: []
+        }
+    }
+
+    func replacingMedia(_ media: [TripMedia]) -> ManagedTripItem {
+        switch self {
+        case .flight(var value): value.media = media; return .flight(value)
+        case .accommodation(var value): value.media = media; return .accommodation(value)
+        case .activity(var value): value.media = media; return .activity(value)
+        default: return self
+        }
+    }
+
+    func assigningLocalFilename(_ filename: String) -> ManagedTripItem {
+        var values = mediaItems
+        if values.isEmpty { values = [TripMedia(filename: filename, isCover: true)] }
+        else {
+            let coverIndex = values.firstIndex(where: \.isCover) ?? values.startIndex
+            values[coverIndex].filename = filename
+            if !values.contains(where: \.isCover) { values[coverIndex].isCover = true }
+        }
+        return replacingMedia(values).replacingAttachment(with: filename)
     }
 }

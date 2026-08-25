@@ -58,6 +58,40 @@ Documents files to migrate without reinstalling the app. Every item has a stable
 Optional booking images are stored separately in `Documents/Attachments`; JSON stores
 only the relative filename.
 
+## Media and portable trip archives
+
+`Flight`, `Accommodation`, and `Activity` optionally own `[TripMedia]`. The optional
+storage is intentional for backwards compatibility: older `thailand-trip.json` and
+`travel-library.json` files decode it as an empty `mediaItems` collection. A media
+record keeps a stable UUID, local relative filename, optional remote/source URLs,
+attribution, caption and cover state. The shape is generic and can be adopted by
+restaurants, viewpoints and other item types without changing the media services.
+
+Chosen remote images and user photos are normalized to JPEG (maximum long edge 2400
+pixels) by `AttachmentStore` and live in `Documents/Attachments`. Search thumbnails
+remain remote and full-resolution data is fetched only after the user confirms a
+result. Views prefer the local cover and fall back to the remote URL or a native
+placeholder.
+
+`TripArchiveService` exports a directory package named `<trip name>.trip`:
+
+```text
+<trip name>.trip/
+├── trip.json       # schemaVersion, exportedAt, complete Trip aggregate
+└── media/          # local attachments, never Base64
+```
+
+Schema version 1 preserves all aggregate UUIDs. Import first decodes a read-only
+preview. Local filenames are collision-safe when copied into the receiving app. A
+duplicate Trip UUID can either replace the aggregate or create a copy with a new root
+Trip UUID; nested UUIDs and their relationships stay intact.
+
+Image search is isolated behind `MediaSearchService`. The included optional adapter
+uses the official Unsplash Search Photos API. Set `UNSPLASH_ACCESS_KEY` as an injected
+Info.plist/build-configuration value outside Git to enable it. With no key, offline,
+provider failure, or missing images, the UI remains functional and shows a controlled
+fallback.
+
 Rented transport is normalized as `RentalVehicleBooking` in `rentalVehicles`, with a
 `RentalVehicleType` for car, scooter, motorcycle, bicycle, e-bike, quad, or other.
 Pickup and drop-off are two derived timeline events that retain the same booking UUID.

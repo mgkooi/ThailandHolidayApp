@@ -39,6 +39,7 @@ final class TripStore {
     var selectedTripId: UUID? { library?.selectedTripId }
     var selectedTrip: Trip? { trip }
     private(set) var nearbySuggestions: [NearbySuggestion] = []
+    var favorites: [Favorite] { library?.favorites ?? [] }
     private(set) var isLoading = false
     private(set) var errorMessage: String?
     private(set) var dataRevision = 0
@@ -148,6 +149,31 @@ final class TripStore {
         if library == nil { library = TravelLibrary(trips: [newTrip], selectedTripId: newTrip.id) }
         else { library?.trips.append(newTrip); library?.selectedTripId = newTrip.id }
         guard save() else { library = previous; return false }
+        recordMutation()
+        return true
+    }
+
+    @discardableResult
+    func importTrip(_ imported: Trip, strategy: TripImportStrategy,
+                    nearbySuggestions importedSuggestions: [NearbySuggestion] = [],
+                    favorites importedFavorites: [Favorite] = []) -> Bool {
+        let previous = library
+        let previousSuggestions = nearbySuggestions
+        var value = imported
+        if library?.trips.contains(where: { $0.id == imported.id }) == true {
+            switch strategy {
+            case .copy: value = imported.copyingAsNewTrip()
+            case .replace: library?.trips.removeAll { $0.id == imported.id }
+            }
+        }
+        library?.trips.append(value)
+        library?.selectedTripId = value.id
+        let suggestionIDs = Set(library?.nearbySuggestions.map(\.id) ?? [])
+        library?.nearbySuggestions.append(contentsOf: importedSuggestions.filter { !suggestionIDs.contains($0.id) })
+        nearbySuggestions = library?.nearbySuggestions ?? nearbySuggestions
+        let favoriteIDs = Set(library?.favorites.map(\.id) ?? [])
+        library?.favorites.append(contentsOf: importedFavorites.filter { !favoriteIDs.contains($0.id) })
+        guard save() else { library = previous; nearbySuggestions = previousSuggestions; return false }
         recordMutation()
         return true
     }
@@ -363,8 +389,9 @@ final class TripStore {
         do {
             if let replacementImageData {
                 guard let attachmentStore else { throw TripStoreError.documentsDirectoryUnavailable }
-                newFilename = try attachmentStore.saveImageData(replacementImageData)
-                committedItem = item.replacingAttachment(with: newFilename)
+                let savedFilename = try attachmentStore.saveImageData(replacementImageData)
+                newFilename = savedFilename
+                committedItem = item.assigningLocalFilename(savedFilename)
             }
         } catch {
             reportAttachmentError("Bijlage kon niet worden opgeslagen", error: error)

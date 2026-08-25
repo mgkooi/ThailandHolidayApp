@@ -80,6 +80,10 @@ struct TripStatusCard: View {
 
     var body: some View {
         VStack(alignment: .leading, spacing: 18) {
+            if accommodation.coverMedia != nil {
+                TripMediaImage(media: accommodation.coverMedia).scaledToFill().frame(height: 150).clipped()
+                    .clipShape(RoundedRectangle(cornerRadius: 18))
+            }
             HStack(alignment: .top) {
                 VStack(alignment: .leading, spacing: 4) {
                     Text("JE VERBLIJF")
@@ -201,6 +205,10 @@ struct FlightCard: View {
 
     var body: some View {
         VStack(alignment: .leading, spacing: 16) {
+            if flight.coverMedia != nil {
+                TripMediaImage(media: flight.coverMedia).scaledToFill().frame(height: 82).clipped()
+                    .clipShape(RoundedRectangle(cornerRadius: 12))
+            }
             HStack {
                 Label("Vlucht", systemImage: "airplane")
                     .font(.headline)
@@ -274,6 +282,10 @@ struct ActivityRow: View {
 
     var body: some View {
         HStack(alignment: .top, spacing: 14) {
+            if activity.coverMedia != nil {
+                TripMediaImage(media: activity.coverMedia).scaledToFill().frame(width: 58, height: 58).clipped()
+                    .clipShape(RoundedRectangle(cornerRadius: 10))
+            }
             VStack(spacing: 4) {
                 Image(systemName: category.symbolName)
                     .font(.subheadline.weight(.semibold))

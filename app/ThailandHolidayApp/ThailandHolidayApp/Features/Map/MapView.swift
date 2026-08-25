@@ -32,6 +32,7 @@ struct MapView: View {
                     ForEach(annotations) { annotation in
                         Annotation(annotation.title, coordinate: annotation.coordinate) {
                             mapPin(symbol: annotation.type.symbolName, color: pinColor(annotation))
+                                .accessibilityLabel(annotation.title)
                         }.tag(annotation.id)
                     }
                     ForEach(results) { place in

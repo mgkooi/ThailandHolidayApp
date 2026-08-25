@@ -1499,6 +1499,73 @@ struct ThailandHolidayAppTests {
             tripDays: trip.tripDays, bookingLinks: trip.bookingLinks)
     }
 
+    @Test func mediaQueriesUseSpecificItemNames() {
+        let builder = MediaQueryBuilder()
+        #expect(builder.accommodation(name: "At Pingnakorn Huaykaew", place: "Chiang Mai",
+            country: "Thailand", address: nil) == "At Pingnakorn Huaykaew Chiang Mai Thailand")
+        #expect(builder.flight(carrierName: "Bangkok Airways", aircraft: "Airbus A319") ==
+                "Bangkok Airways Airbus A319")
+        #expect(builder.activity(name: "Wat Phra That Doi Suthep", place: "Chiang Mai",
+            country: "Thailand") == "Wat Phra That Doi Suthep Chiang Mai Thailand")
+    }
+
+    @Test func todaySwipeRequiresDominantHorizontalMovement() {
+        #expect(TodaySwipeNavigation.dayOffset(horizontal: -80, vertical: 10) == 1)
+        #expect(TodaySwipeNavigation.dayOffset(horizontal: 80, vertical: 10) == -1)
+        #expect(TodaySwipeNavigation.dayOffset(horizontal: 70, vertical: 90) == nil)
+        #expect(TodaySwipeNavigation.dayOffset(horizontal: 40, vertical: 5) == nil)
+    }
+
+    @Test func todayNavigationStopsAtTripBoundaries() throws {
+        let trip = try repository.currentTrip()
+        #expect(TodayDateSelection.moving(trip.startDate, by: -1, in: trip) == nil)
+        #expect(TodayDateSelection.moving(trip.endDate, by: 1, in: trip) == nil)
+        #expect(TodayDateSelection.moving(trip.startDate, by: 1, in: trip) != nil)
+    }
+
+    @Test func oldTripJSONWithoutMediaStillDecodes() throws {
+        let trip = try repository.currentTrip()
+        let data = try TripJSONCoding.encoder().encode(trip)
+        let json = try #require(String(data: data, encoding: .utf8))
+            .replacingOccurrences(of: ",\"media\":null", with: "")
+        let decoded = try TripJSONCoding.decoder().decode(Trip.self, from: Data(json.utf8))
+        #expect(decoded.accommodations.first?.mediaItems.isEmpty == true)
+        #expect(decoded.flights.first?.mediaItems.isEmpty == true)
+        #expect(decoded.activities.first?.mediaItems.isEmpty == true)
+    }
+
+    @Test func tripArchiveRoundTripPreservesRelationshipsAndMedia() throws {
+        var trip = try repository.currentTrip()
+        let directory = FileManager.default.temporaryDirectory.appendingPathComponent("Archive-\(UUID())", isDirectory: true)
+        defer { try? FileManager.default.removeItem(at: directory) }
+        let attachments = AttachmentStore(documentsDirectory: directory)
+        let filename = try attachments.saveImageData(testImageData(color: .systemBlue))
+        trip.accommodations[0].media = [TripMedia(filename: filename, sourceName: "Eigen foto", isCover: true)]
+        let package = try TripArchiveService().export(trip: trip, attachmentStore: attachments,
+                                                       destinationDirectory: directory)
+        let preview = try TripArchiveService().preview(url: package)
+        let importedDirectory = directory.appendingPathComponent("Imported", isDirectory: true)
+        let importedStore = AttachmentStore(documentsDirectory: importedDirectory)
+        let imported = try TripArchiveService().importedTrip(from: preview, attachmentStore: importedStore)
+        #expect(imported.id == trip.id)
+        #expect(imported.activities.first?.destinationId == trip.activities.first?.destinationId)
+        let importedFilename = try #require(imported.accommodations.first?.coverMedia?.filename)
+        #expect(FileManager.default.fileExists(atPath: importedStore.imageURL(for: importedFilename).path))
+        #expect(imported.accommodations.first?.coverMedia?.sourceName == "Eigen foto")
+    }
+
+    @Test @MainActor func duplicateTripImportCanCopyOrReplace() throws {
+        let fixture = try makeTemporaryStore()
+        defer { try? FileManager.default.removeItem(at: fixture.directory) }
+        let trip = try #require(fixture.store.trip)
+        let originalCount = fixture.store.trips.count
+        #expect(fixture.store.importTrip(trip, strategy: .copy))
+        #expect(fixture.store.trips.count == originalCount + 1)
+        #expect(fixture.store.trips.last?.id != trip.id)
+        #expect(fixture.store.importTrip(trip, strategy: .replace))
+        #expect(fixture.store.trips.filter { $0.id == trip.id }.count == 1)
+    }
+
     @MainActor
     private func makeTemporaryStore() throws -> (store: TripStore, directory: URL) {
         let directory = FileManager.default.temporaryDirectory

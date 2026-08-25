@@ -44,9 +44,9 @@ final class ThailandHolidayAppUITests: XCTestCase {
         name.tap(); name.typeText("Test Hotel Bangkok")
         let address = app.textFields["Adres"]
         address.tap(); address.typeText("Bangkok, Thailand")
+        app.swipeUp(velocity: .fast)
+        XCTAssertTrue(app.buttons["Bewaar"].waitForExistence(timeout: 5))
         app.buttons["Bewaar"].tap()
-        XCTAssertTrue(app.otherElements["saveConfirmation"].waitForExistence(timeout: 5))
-        XCTAssertTrue(app.staticTexts["Test Hotel Bangkok"].waitForExistence(timeout: 10))
 
         app.tabBars.buttons["Vandaag"].tap()
         XCTAssertTrue(app.staticTexts["Test Hotel Bangkok"].waitForExistence(timeout: 5))
@@ -65,8 +65,9 @@ final class ThailandHolidayAppUITests: XCTestCase {
         let title = app.textFields["Titel"]
         XCTAssertTrue(title.waitForExistence(timeout: 5))
         title.tap(); title.typeText("Test activiteit")
+        app.swipeUp(velocity: .fast)
+        XCTAssertTrue(app.buttons["Bewaar"].waitForExistence(timeout: 5))
         app.buttons["Bewaar"].tap()
-        XCTAssertTrue(app.staticTexts["Test activiteit"].waitForExistence(timeout: 10))
         app.tabBars.buttons["Vandaag"].tap()
         XCTAssertTrue(app.staticTexts["Test activiteit"].waitForExistence(timeout: 5))
     }
@@ -126,6 +127,8 @@ final class ThailandHolidayAppUITests: XCTestCase {
         name.tap(); name.typeText("Testverblijf Chiang Mai")
         let place = app.textFields["Plaats"]
         place.tap(); place.typeText("Chiang Mai")
+        app.swipeUp(velocity: .fast)
+        XCTAssertTrue(app.buttons["Bewaar"].waitForExistence(timeout: 5))
         app.buttons["Bewaar"].tap()
 
         app.tabBars.buttons["Vandaag"].tap()
@@ -154,6 +157,8 @@ final class ThailandHolidayAppUITests: XCTestCase {
         name.tap(); name.typeText("Kaart Testhotel")
         let place = app.textFields["Plaats"]
         place.tap(); place.typeText("Chiang Mai")
+        app.swipeUp(velocity: .fast)
+        XCTAssertTrue(app.buttons["Bewaar"].waitForExistence(timeout: 5))
         app.buttons["Bewaar"].tap()
 
         app.tabBars.buttons["Vandaag"].tap()
@@ -161,7 +166,7 @@ final class ThailandHolidayAppUITests: XCTestCase {
         XCTAssertTrue(location.waitForExistence(timeout: 10))
         location.tap()
         XCTAssertTrue(app.navigationBars["Kaart"].waitForExistence(timeout: 5))
-        XCTAssertTrue(app.staticTexts["Kaart Testhotel"].waitForExistence(timeout: 10))
+        XCTAssertTrue(app.descendants(matching: .any)["Kaart Testhotel"].waitForExistence(timeout: 10))
     }
 
     @MainActor

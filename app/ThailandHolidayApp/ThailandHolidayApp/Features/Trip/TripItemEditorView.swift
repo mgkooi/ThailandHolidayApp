@@ -30,6 +30,8 @@ struct TripItemEditorView: View {
     @State private var mapDuplicateAcknowledged = false
     @State private var departureAirportSuggestions: [AirportInfo] = []
     @State private var arrivalAirportSuggestions: [AirportInfo] = []
+    @State private var showsMediaSearch = false
+    @State private var showsCamera = false
 
     init(kind: TripItemKind, itemID: UUID? = nil, extraction: BookingExtractionResult? = nil,
          scannedImageData: Data? = nil, mapPlace: MapPlace? = nil, targetTripID: UUID? = nil) {
@@ -57,6 +59,7 @@ struct TripItemEditorView: View {
             Task {
                 do {
                     draft?.replacementImageData = try await item.loadTransferable(type: Data.self)
+                    if kind.supportsMedia { draft?.media = [TripMedia(isCover: true)] }
                     draft?.removeAttachment = false
                 } catch { errorMessage = "De afbeelding kon niet worden geladen." }
             }
@@ -76,6 +79,22 @@ struct TripItemEditorView: View {
         }
         .sheet(isPresented: $showsMapPicker) {
             MapPlacePickerView { place in acceptMapPlace(place) }
+        }
+        .sheet(isPresented: $showsMediaSearch) {
+            if let draft, let trip = editingTrip {
+                MediaSearchView(initialQuery: mediaQuery(draft: draft, trip: trip)) { selected in
+                    draft.replacementImageData = selected.data
+                    draft.media = [selected.metadata]
+                    draft.removeAttachment = false
+                }
+            }
+        }
+        .sheet(isPresented: $showsCamera) {
+            CameraImagePicker { data in
+                draft?.replacementImageData = data
+                draft?.media = [TripMedia(isCover: true)]
+                draft?.removeAttachment = false
+            }
         }
         .alert("Deze locatie lijkt al in deze reis te staan.", isPresented: $confirmsMapDuplicate) {
             Button("Bekijk bestaande") { dismiss() }
@@ -138,12 +157,18 @@ struct TripItemEditorView: View {
                 }
             }
 
-            Section("Boekingsbewijs") {
+            Section(kind.supportsMedia ? "Beeldmateriaal" : "Boekingsbewijs") {
                 if let image = previewImage(draft) {
                     Image(uiImage: image).resizable().scaledToFit().clipShape(RoundedRectangle(cornerRadius: 14))
                 }
                 PhotosPicker(selection: $photoItem, matching: .images) {
-                    Label(hasAttachment(draft) ? "Vervang afbeelding" : "Kies afbeelding", systemImage: "photo")
+                    Label(hasAttachment(draft) ? "Vervang foto" : "Foto toevoegen", systemImage: "photo")
+                }
+                if kind.supportsMedia {
+                    Button { showsMediaSearch = true } label: { Label("Zoek afbeelding", systemImage: "magnifyingglass") }
+                    if CameraImagePicker.isAvailable {
+                        Button { showsCamera = true } label: { Label("Maak foto", systemImage: "camera") }
+                    }
                 }
                 if hasAttachment(draft) {
                     Button("Verwijder afbeelding", role: .destructive) {
@@ -167,6 +192,17 @@ struct TripItemEditorView: View {
             }
         }
         .environment(\.timeZone, trip.timeZone)
+    }
+
+    private func mediaQuery(draft: TripItemDraft, trip: Trip) -> String {
+        let builder = MediaQueryBuilder()
+        return switch kind {
+        case .accommodation: builder.accommodation(name: draft.a, place: draft.f.nilIfBlank,
+                                                    country: trip.country, address: draft.c.nilIfBlank)
+        case .flight: builder.flight(carrierName: draft.a, aircraft: draft.e.nilIfBlank)
+        case .activity: builder.activity(name: draft.a, place: draft.c.nilIfBlank, country: trip.country)
+        default: ""
+        }
     }
 
     @ViewBuilder
@@ -413,6 +449,7 @@ final class TripItemDraft {
     var activityCategory: ItineraryCategory = .activity
     var replacementImageData: Data?
     var removeAttachment = false
+    var media: [TripMedia] = []
     private let kind: TripItemKind
     private(set) var locationSource: LocationSource = .manual
     var locationPlaceName: String {
@@ -442,6 +479,7 @@ final class TripItemDraft {
     init(item: ManagedTripItem, trip: Trip) {
         kind = item.kind
         originalAttachment = item.attachmentFilename
+        media = item.mediaItems
         switch item {
         case .accommodation(let value):
             originalAddress = [value.address.nilIfBlank, value.placeName?.nilIfBlank].compactMap { $0 }.joined(separator: ", ")
@@ -620,8 +658,8 @@ final class TripItemDraft {
             return .flight(Flight(id:id,date:day,airline:a,flightNumber:b,originAirport:c,destinationAirport:d,
                 departureTime:start,arrivalDate:arrivalDay,arrivalTime:calendar.combining(day:arrivalDay,time:endTime),
                 departureAirport:departureAirport,arrivalAirport:arrivalAirport,bookingReference:g.nilIfBlank,
-                aircraft:e.nilIfBlank,cabin:f.nilIfBlank,notes:notes.nilIfBlank,bookingURL:url,attachmentFilename:originalAttachment))
-        case .accommodation: return .accommodation(Accommodation(id:id,name:a,type:.hotel,destinationID:destinationID,placeName:f.nilIfBlank,checkIn:startTime,checkOut:endTime,address:c,latitude:Double(d),longitude:Double(e),roomDescription:b,bookingReference:g.nilIfBlank,websiteURL:nil,bookingURL:url,phoneNumber:nil,notes:notes.nilIfBlank,attachmentFilename:originalAttachment))
+                aircraft:e.nilIfBlank,cabin:f.nilIfBlank,notes:notes.nilIfBlank,bookingURL:url,attachmentFilename:originalAttachment,media:media))
+        case .accommodation: return .accommodation(Accommodation(id:id,name:a,type:.hotel,destinationID:destinationID,placeName:f.nilIfBlank,checkIn:startTime,checkOut:endTime,address:c,latitude:Double(d),longitude:Double(e),roomDescription:b,bookingReference:g.nilIfBlank,websiteURL:nil,bookingURL:url,phoneNumber:nil,notes:notes.nilIfBlank,attachmentFilename:originalAttachment,media:media))
         case .transfer: return .transfer(Transfer(id:id,date:day,startTime:start,endTime:end,type:transferType,provider:a,origin:b,destination:c,bookingReference:d.nilIfBlank,notes:notes.nilIfBlank,url:url,attachmentFilename:originalAttachment))
         case .ferry: return .ferry(Ferry(id:id,date:day,operatorName:a,departureLocation:b,arrivalLocation:c,departureTime:start,arrivalTime:end,bookingReference:d.nilIfBlank,notes:notes.nilIfBlank,url:url,attachmentFilename:originalAttachment))
         case .train: return .train(TrainTrip(id:id,date:day,operatorName:a,trainNumber:b,originStation:c,destinationStation:d,departureTime:start,arrivalTime:end,carriage:e.nilIfBlank,seat:f.nilIfBlank,notes:notes.nilIfBlank,url:url,attachmentFilename:originalAttachment,bookingReference:g.nilIfBlank))
@@ -629,7 +667,7 @@ final class TripItemDraft {
             let dropoffDay = calendar.startOfDay(for: secondaryDate)
             return .rentalVehicle(RentalVehicleBooking(id:id,vehicleType:rentalVehicleType,company:a.nilIfBlank,pickupDate:day,pickupTime:start,pickupLocation:b,dropoffDate:dropoffDay,dropoffTime:calendar.combining(day:dropoffDay,time:endTime),dropoffLocation:c.nilIfBlank,vehicleDescription:d.nilIfBlank,bookingReference:e.nilIfBlank,renterName:f.nilIfBlank,notes:notes.nilIfBlank,url:url,attachmentFilename:originalAttachment))
         case .restaurant: return .restaurant(RestaurantReservation(id:id,date:day,time:start,name:a,address:b.nilIfBlank,latitude:Double(e),longitude:Double(f),reservationName:c.nilIfBlank,reservationReference:d.nilIfBlank,notes:notes.nilIfBlank,url:url,attachmentFilename:originalAttachment))
-        case .activity: return .activity(Activity(id:id,destinationId:destinationID,date:day,startTime:start,endTime:end,title:a,category:activityCategory.rawValue,description:b.nilIfBlank,location:TripLocation(placeName:c.nilIfBlank,address:locationAddress.nilIfBlank,latitude:Double(d),longitude:Double(e)),latitude:Double(d),longitude:Double(e),websiteURL:nil,bookingURL:nil,notes:notes.nilIfBlank,url:url,attachmentFilename:originalAttachment,isFavorite:false,isCompleted:false,bookingReference:g.nilIfBlank))
+        case .activity: return .activity(Activity(id:id,destinationId:destinationID,date:day,startTime:start,endTime:end,title:a,category:activityCategory.rawValue,description:b.nilIfBlank,location:TripLocation(placeName:c.nilIfBlank,address:locationAddress.nilIfBlank,latitude:Double(d),longitude:Double(e)),latitude:Double(d),longitude:Double(e),websiteURL:nil,bookingURL:nil,notes:notes.nilIfBlank,url:url,attachmentFilename:originalAttachment,isFavorite:false,isCompleted:false,bookingReference:g.nilIfBlank,media:media))
         case .other: return .other(TripEvent(id:id,date:day,startTime:start,endTime:end,title:a,location:b.nilIfBlank,notes:notes.nilIfBlank,url:url,attachmentFilename:originalAttachment))
         }
     }
