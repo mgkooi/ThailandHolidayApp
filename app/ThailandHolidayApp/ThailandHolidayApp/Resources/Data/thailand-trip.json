@@ -1,0 +1,197 @@
+{
+  "trip": {
+    "id": "00000000-0000-0000-0000-000000000001",
+    "name": "Thailand 2026",
+    "country": "Thailand",
+    "startDate": "2026-09-04T00:00:00+07:00",
+    "endDate": "2026-09-19T23:59:59+07:00",
+    "travelers": 3,
+    "timeZoneIdentifier": "Asia/Bangkok",
+    "destinations": [
+      {
+        "id": "00000000-0000-0000-0000-000000000101",
+        "name": "Khao Sok",
+        "country": "Thailand",
+        "region": "Surat Thani",
+        "arrivalDate": "2026-09-09T00:00:00+07:00",
+        "departureDate": "2026-09-10T23:59:59+07:00",
+        "latitude": 8.9105,
+        "longitude": 98.5307,
+        "description": "Regenwoud en kalksteenbergen in Zuid-Thailand.",
+        "imageReference": null,
+        "notes": "Verblijf in de buurt van het nationale park."
+      }
+    ],
+    "flights": [
+      {
+        "id": "00000000-0000-0000-0000-000000000801",
+        "date": "2026-09-09T00:00:00+07:00",
+        "airline": "Thai Airways",
+        "flightNumber": "TG123",
+        "originAirport": "Bangkok (BKK)",
+        "destinationAirport": "Surat Thani (URT)",
+        "departureTime": "2026-09-09T07:00:00+07:00",
+        "arrivalTime": "2026-09-09T08:15:00+07:00",
+        "aircraft": null,
+        "cabin": "Economy"
+      }
+    ],
+    "accommodations": [
+      {
+        "id": "00000000-0000-0000-0000-000000000201",
+        "name": "Our Jungle House",
+        "type": "treehouse",
+        "destinationID": "00000000-0000-0000-0000-000000000101",
+        "checkIn": "2026-09-09T14:00:00+07:00",
+        "checkOut": "2026-09-11T11:00:00+07:00",
+        "address": "183 Moo 6, Khlong Sok, Phanom, Surat Thani",
+        "latitude": 8.9087,
+        "longitude": 98.5266,
+        "roomDescription": "3-persoons boomhut",
+        "bookingReference": "OJH-TH-2026",
+        "websiteURL": "https://www.ourjunglehouse.com",
+        "bookingURL": null,
+        "phoneNumber": null
+      }
+    ],
+    "activities": [
+      {
+        "id": "00000000-0000-0000-0000-000000000901",
+        "destinationId": "00000000-0000-0000-0000-000000000101",
+        "date": "2026-09-09T00:00:00+07:00",
+        "startTime": "2026-09-09T10:00:00+07:00",
+        "endTime": "2026-09-09T12:00:00+07:00",
+        "title": "Kanoën op de Sok-rivier",
+        "category": "activity",
+        "description": "Rustige tocht door het regenwoud.",
+        "latitude": 8.914,
+        "longitude": 98.528,
+        "websiteURL": null,
+        "bookingURL": null,
+        "notes": null,
+        "isFavorite": true,
+        "isCompleted": false
+      }
+    ],
+    "transfers": [],
+    "ferries": [],
+    "trains": [],
+    "restaurants": [],
+    "rentalVehicles": [],
+    "otherItems": [],
+    "transportItems": [
+      {
+        "id": "00000000-0000-0000-0000-000000000301",
+        "type": "privateTransfer",
+        "provider": "Andaman Transfer",
+        "referenceNumber": "TR-204",
+        "departureDate": "2026-09-10T07:30:00+07:00",
+        "arrivalDate": "2026-09-10T11:15:00+07:00",
+        "origin": "Our Jungle House",
+        "destination": "Rassada Pier, Phuket",
+        "durationMinutes": 225,
+        "bookingURL": null,
+        "notes": "Ophalen bij de receptie.",
+        "flightNumber": null,
+        "departureAirportCode": null,
+        "arrivalAirportCode": null,
+        "terminal": null,
+        "aircraft": null,
+        "travelClass": null
+      }
+    ],
+    "tripDays": [
+      {
+        "id": "00000000-0000-0000-0000-000000000401",
+        "date": "2026-09-09T00:00:00+07:00",
+        "destinationID": "00000000-0000-0000-0000-000000000101",
+        "accommodationID": "00000000-0000-0000-0000-000000000201",
+        "notes": "Eerste dag in Khao Sok.",
+        "itineraryItems": [
+          {
+            "id": "00000000-0000-0000-0000-000000000501",
+            "startDate": "2026-09-09T08:30:00+07:00",
+            "endDate": "2026-09-09T09:30:00+07:00",
+            "title": "Ontbijt aan de rivier",
+            "category": "restaurant",
+            "location": "Our Jungle House",
+            "latitude": 8.9087,
+            "longitude": 98.5266,
+            "description": null,
+            "url": null,
+            "status": "completed"
+          },
+          {
+            "id": "00000000-0000-0000-0000-000000000502",
+            "startDate": "2026-09-09T10:00:00+07:00",
+            "endDate": "2026-09-09T12:00:00+07:00",
+            "title": "Kanoën op de Sok-rivier",
+            "category": "activity",
+            "location": "Sok River",
+            "latitude": 8.9140,
+            "longitude": 98.5280,
+            "description": "Rustige tocht door het regenwoud.",
+            "url": "https://maps.apple.com/?q=Sok+River+Khao+Sok",
+            "status": "current"
+          },
+          {
+            "id": "00000000-0000-0000-0000-000000000503",
+            "startDate": "2026-09-09T13:00:00+07:00",
+            "endDate": null,
+            "title": "Lunch in het dorp",
+            "category": "restaurant",
+            "location": "Khao Sok Village",
+            "latitude": null,
+            "longitude": null,
+            "description": null,
+            "url": null,
+            "status": "planned"
+          }
+        ]
+      }
+    ],
+    "bookingLinks": [
+      {
+        "id": "00000000-0000-0000-0000-000000000601",
+        "title": "Our Jungle House",
+        "url": "https://www.ourjunglehouse.com",
+        "type": "hotel"
+      }
+    ]
+  },
+  "nearbySuggestions": [
+    {
+      "id": "00000000-0000-0000-0000-000000000701",
+      "externalProvider": "sample",
+      "externalID": "pawns-restaurant",
+      "name": "Pawn's Restaurant",
+      "category": "Thais restaurant",
+      "rating": 4.7,
+      "reviewCount": 842,
+      "latitude": 8.9142,
+      "longitude": 98.5292,
+      "distanceMeters": 650,
+      "priceLevel": 1,
+      "openingStatus": "open",
+      "websiteURL": null,
+      "mapsURL": "https://maps.apple.com/?q=Pawn%27s+Restaurant+Khao+Sok"
+    },
+    {
+      "id": "00000000-0000-0000-0000-000000000702",
+      "externalProvider": "sample",
+      "externalID": "khao-sok-national-park",
+      "name": "Khao Sok National Park",
+      "category": "Natuur",
+      "rating": 4.8,
+      "reviewCount": 3120,
+      "latitude": 8.9362,
+      "longitude": 98.5313,
+      "distanceMeters": 1400,
+      "priceLevel": null,
+      "openingStatus": "open",
+      "websiteURL": null,
+      "mapsURL": "https://maps.apple.com/?q=Khao+Sok+National+Park"
+    }
+  ],
+  "favorites": []
+}
