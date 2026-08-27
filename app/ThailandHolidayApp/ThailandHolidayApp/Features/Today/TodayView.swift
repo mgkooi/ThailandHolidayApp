@@ -14,6 +14,7 @@ struct TodayView: View {
     @State private var nearbyRestaurants: [DiscoveryResult] = []
     @State private var nearbyState: DiscoveryLoadState = .idle
     @State private var navigationDirection = 1
+    @State private var coverTarget: ManagedTripItem?
 
     init(selectedDate: Date? = nil, now: () -> Date = Date.init) {
         _selectedDate = State(initialValue: TodayDateSelection.initialDate(selectedDate: selectedDate, now: now()))
@@ -51,6 +52,7 @@ struct TodayView: View {
                 guard phase == .active else { return }
                 Task { await refreshWeather() }
             }
+            .sheet(item: $coverTarget) { CoverEditorView(itemID: $0.id, kind: $0.kind) }
         }
     }
 
@@ -101,7 +103,9 @@ struct TodayView: View {
                 }
 
                 if let accommodation {
-                    TripStatusCard(destination: accommodationDestination, accommodation: accommodation, timeZone: trip.timeZone)
+                    TripStatusCard(destination: accommodationDestination, accommodation: accommodation,
+                                   timeZone: trip.timeZone,
+                                   coverAction: { coverTarget = .accommodation(accommodation) })
                 }
 
                 QuickActionsView(accommodation: accommodation, hasFlights: !flights.isEmpty)
@@ -109,7 +113,8 @@ struct TodayView: View {
                 if !flights.isEmpty {
                     sectionHeader("Volgende verplaatsing")
                     ForEach(flights) { flight in
-                        FlightCard(flight: flight, timeZone: trip.timeZone)
+                        FlightCard(flight: flight, timeZone: trip.timeZone,
+                                   coverAction: { coverTarget = .flight(flight) })
                     }
                 }
 
@@ -206,16 +211,22 @@ struct TodayView: View {
             } else {
                 VStack(spacing: 0) {
                     ForEach(Array(activities.enumerated()), id: \.element.id) { index, activity in
-                        NavigationLink {
-                            ActivityDetailView(activityID: activity.id)
-                        } label: {
+                        if activity.presentationMedia != nil {
+                            ActivityHeroCard(activity: activity, timeZone: timeZone,
+                                             coverAction: { coverTarget = .activity(activity) })
+                                .padding(.vertical, 8)
+                        } else {
+                            NavigationLink {
+                                ActivityDetailView(activityID: activity.id)
+                            } label: {
                             ActivityRow(
                                 activity: activity,
                                 timeZone: timeZone,
                                 isLast: index == activities.count - 1 && restaurants.isEmpty
                             )
+                            }
+                            .buttonStyle(.plain)
                         }
-                        .buttonStyle(.plain)
                     }
                     ForEach(Array(restaurants.enumerated()), id: \.element.id) { index, restaurant in
                         NavigationLink {

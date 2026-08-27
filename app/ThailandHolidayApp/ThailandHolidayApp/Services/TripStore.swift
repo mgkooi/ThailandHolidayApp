@@ -416,6 +416,36 @@ final class TripStore {
     }
 
     @discardableResult
+    func setPresentationMedia(for item: ManagedTripItem, imageData: Data?, metadata: TripMedia?) -> Bool {
+        guard let targetID = selectedTripId,
+              let targetIndex = library?.trips.firstIndex(where: { $0.id == targetID }),
+              var updatedTrip = library?.trips[targetIndex] else { return false }
+        var savedFilename: String?
+        var value = metadata
+        do {
+            if let imageData {
+                guard let attachmentStore else { throw TripStoreError.documentsDirectoryUnavailable }
+                savedFilename = try attachmentStore.saveImageData(imageData)
+                value?.filename = savedFilename
+            }
+        } catch {
+            reportAttachmentError("Omslag kon niet worden opgeslagen", error: error)
+            return false
+        }
+        let enrichedItem = value?.googlePlaceID.map { item.replacingGooglePlaceID($0) } ?? item
+        upsert(enrichedItem.replacingPresentationMedia(value), in: &updatedTrip)
+        let originalLibrary = library
+        library?.trips[targetIndex] = updatedTrip
+        guard save() else {
+            library = originalLibrary
+            if let savedFilename { try? attachmentStore?.deleteAttachment(filename: savedFilename) }
+            return false
+        }
+        recordMutation()
+        return true
+    }
+
+    @discardableResult
     func deleteManagedItem(_ item: ManagedTripItem) -> Bool {
         guard let originalTrip = trip else { return false }
         var updatedTrip = originalTrip

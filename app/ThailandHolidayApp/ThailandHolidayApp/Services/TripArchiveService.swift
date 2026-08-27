@@ -1,8 +1,14 @@
 import Foundation
 import OSLog
+import UniformTypeIdentifiers
+
+extension UTType {
+    static let tripArchive = UTType(exportedAs: "nl.martijnkooi.ThailandHolidayApp.triparchive",
+                                    conformingTo: .package)
+}
 
 struct TripArchiveManifest: Codable, Equatable {
-    static let currentSchemaVersion = 1
+    static let currentSchemaVersion = 2
     let schemaVersion: Int
     let exportedAt: Date
     var trip: Trip
@@ -25,11 +31,21 @@ struct TripImportPreview: Identifiable {
 enum TripImportStrategy { case copy, replace }
 
 enum TripArchiveError: LocalizedError {
-    case invalidPackage, unsupportedVersion(Int), missingMedia(String)
+    case invalidPackage
+    case missingManifest
+    case corruptManifest(String)
+    case unsupportedVersion(Int)
+    case cannotAccessDocument
+    case cannotCopyDocument(String)
+    case missingMedia(String)
     var errorDescription: String? {
         switch self {
-        case .invalidPackage: "Dit bestand is geen geldig reisbestand."
+        case .invalidPackage: "Dit bestand is geen geldig reisarchief of oude reisexportmap."
+        case .missingManifest: "Het reisarchief bevat geen trip.json."
+        case .corruptManifest(let reason): "trip.json kon niet worden gelezen: \(reason)"
         case .unsupportedVersion(let version): "Deze reis gebruikt een nog niet ondersteunde versie (\(version))."
+        case .cannotAccessDocument: "De app heeft geen toegang tot het gekozen reisbestand. Download het bestand in Bestanden en probeer opnieuw."
+        case .cannotCopyDocument(let reason): "Het reisbestand kon niet lokaal worden voorbereid: \(reason)"
         case .missingMedia(let name): "Afbeelding \(name) ontbreekt in het reisbestand."
         }
     }
@@ -45,7 +61,7 @@ struct TripArchiveService {
                 attachmentStore: AttachmentStore, destinationDirectory: URL) throws -> URL {
         let safeName = trip.name.replacingOccurrences(of: "[^A-Za-z0-9À-ÿ _-]", with: "-",
                                                        options: .regularExpression).nilIfBlank ?? "Reis"
-        let package = destinationDirectory.appendingPathComponent("\(safeName).trip", isDirectory: true)
+        let package = destinationDirectory.appendingPathComponent("\(safeName).triparchive", isDirectory: true)
         if fileManager.fileExists(atPath: package.path) { try fileManager.removeItem(at: package) }
         let mediaDirectory = package.appendingPathComponent("media", isDirectory: true)
         try fileManager.createDirectory(at: mediaDirectory, withIntermediateDirectories: true)
@@ -66,10 +82,51 @@ struct TripArchiveService {
         return package
     }
 
+    func stageImport(from source: URL, temporaryDirectory: URL = .temporaryDirectory,
+                     accessSecurityScope: (URL) -> Bool = { $0.startAccessingSecurityScopedResource() },
+                     stopSecurityScope: (URL) -> Void = { $0.stopAccessingSecurityScopedResource() }) throws -> URL {
+        let accessed = accessSecurityScope(source)
+        defer { if accessed { stopSecurityScope(source) } }
+
+        do { try fileManager.createDirectory(at: temporaryDirectory, withIntermediateDirectories: true) }
+        catch { throw TripArchiveError.cannotCopyDocument(error.localizedDescription) }
+        let suffix = source.pathExtension.nilIfBlank.map { ".\($0)" } ?? ".triparchive"
+        let destination = temporaryDirectory
+            .appendingPathComponent("Imported-\(UUID().uuidString)\(suffix)", isDirectory: isDirectory(source))
+        var coordinationError: NSError?
+        var copyError: Error?
+        NSFileCoordinator(filePresenter: nil).coordinate(readingItemAt: source, options: [.withoutChanges],
+                                                          error: &coordinationError) { coordinatedURL in
+            do {
+                if fileManager.fileExists(atPath: destination.path) { try fileManager.removeItem(at: destination) }
+                try fileManager.copyItem(at: coordinatedURL, to: destination)
+            } catch { copyError = error }
+        }
+        if let coordinationError {
+            if !fileManager.isReadableFile(atPath: source.path) { throw TripArchiveError.cannotAccessDocument }
+            throw TripArchiveError.cannotCopyDocument(coordinationError.localizedDescription)
+        }
+        if let copyError { throw TripArchiveError.cannotCopyDocument(copyError.localizedDescription) }
+        guard fileManager.fileExists(atPath: destination.path) else { throw TripArchiveError.cannotAccessDocument }
+        return destination
+    }
+
     func preview(url: URL) throws -> TripImportPreview {
-        let manifestURL = url.hasDirectoryPath ? url.appendingPathComponent("trip.json") : url
-        let manifest = try TripJSONCoding.decoder().decode(TripArchiveManifest.self,
-            from: Data(contentsOf: manifestURL))
+        let manifestURL: URL
+        if isDirectory(url) {
+            manifestURL = url.appendingPathComponent("trip.json", isDirectory: false)
+            guard fileManager.fileExists(atPath: manifestURL.path) else { throw TripArchiveError.missingManifest }
+        } else if url.lastPathComponent == "trip.json" || url.pathExtension.lowercased() == "json" {
+            manifestURL = url
+        } else {
+            throw TripArchiveError.invalidPackage
+        }
+        let data: Data
+        do { data = try Data(contentsOf: manifestURL) }
+        catch { throw TripArchiveError.corruptManifest("bestand is niet leesbaar (\(error.localizedDescription))") }
+        let manifest: TripArchiveManifest
+        do { manifest = try TripJSONCoding.decoder().decode(TripArchiveManifest.self, from: data) }
+        catch { throw TripArchiveError.corruptManifest(error.localizedDescription) }
         guard manifest.schemaVersion <= TripArchiveManifest.currentSchemaVersion else {
             throw TripArchiveError.unsupportedVersion(manifest.schemaVersion)
         }
@@ -94,6 +151,10 @@ struct TripArchiveService {
         return trip
     }
 
+    private func isDirectory(_ url: URL) -> Bool {
+        (try? url.resourceValues(forKeys: [.isDirectoryKey]).isDirectory) == true
+    }
+
     private func localFilenames(in trip: Trip) -> Set<String> {
         var names = Set(trip.allMedia.compactMap(\.filename))
         names.formUnion(trip.flights.compactMap(\.attachmentFilename))
@@ -114,12 +175,16 @@ struct TripArchiveService {
         func media(_ values: [TripMedia]?) -> [TripMedia]? {
             values?.map { value in var result = value; result.filename = mapped(value.filename); return result }
         }
-        for index in trip.flights.indices { trip.flights[index].attachmentFilename = mapped(trip.flights[index].attachmentFilename); trip.flights[index].media = media(trip.flights[index].media) }
-        for index in trip.accommodations.indices { trip.accommodations[index].attachmentFilename = mapped(trip.accommodations[index].attachmentFilename); trip.accommodations[index].media = media(trip.accommodations[index].media) }
+        func presentation(_ value: TripMedia?) -> TripMedia? {
+            value.map { value in var result = value; result.filename = mapped(value.filename); return result }
+        }
+        for index in trip.flights.indices { trip.flights[index].attachmentFilename = mapped(trip.flights[index].attachmentFilename); trip.flights[index].media = media(trip.flights[index].media); trip.flights[index].presentationMedia = presentation(trip.flights[index].presentationMedia) }
+        for index in trip.accommodations.indices { trip.accommodations[index].attachmentFilename = mapped(trip.accommodations[index].attachmentFilename); trip.accommodations[index].media = media(trip.accommodations[index].media); trip.accommodations[index].presentationMedia = presentation(trip.accommodations[index].presentationMedia) }
         for index in trip.activities.indices {
             let old = trip.activities[index]
             trip.activities[index] = old.updating(attachmentFilename: .some(mapped(old.attachmentFilename)))
             trip.activities[index].media = media(old.media)
+            trip.activities[index].presentationMedia = presentation(old.presentationMedia)
         }
         for index in trip.transfers.indices { trip.transfers[index].attachmentFilename = mapped(trip.transfers[index].attachmentFilename) }
         for index in trip.ferries.indices { trip.ferries[index].attachmentFilename = mapped(trip.ferries[index].attachmentFilename) }

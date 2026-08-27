@@ -1534,13 +1534,13 @@ struct ThailandHolidayAppTests {
         #expect(decoded.activities.first?.mediaItems.isEmpty == true)
     }
 
-    @Test func tripArchiveRoundTripPreservesRelationshipsAndMedia() throws {
+    @Test @MainActor func tripArchiveRoundTripPreservesRelationshipsAndMedia() throws {
         var trip = try repository.currentTrip()
         let directory = FileManager.default.temporaryDirectory.appendingPathComponent("Archive-\(UUID())", isDirectory: true)
         defer { try? FileManager.default.removeItem(at: directory) }
         let attachments = AttachmentStore(documentsDirectory: directory)
         let filename = try attachments.saveImageData(testImageData(color: .systemBlue))
-        trip.accommodations[0].media = [TripMedia(filename: filename, sourceName: "Eigen foto", isCover: true)]
+        trip.accommodations[0].media = [TripMedia(filename: filename, sourceName: "Eigen foto")]
         let package = try TripArchiveService().export(trip: trip, attachmentStore: attachments,
                                                        destinationDirectory: directory)
         let preview = try TripArchiveService().preview(url: package)
@@ -1549,9 +1549,282 @@ struct ThailandHolidayAppTests {
         let imported = try TripArchiveService().importedTrip(from: preview, attachmentStore: importedStore)
         #expect(imported.id == trip.id)
         #expect(imported.activities.first?.destinationId == trip.activities.first?.destinationId)
-        let importedFilename = try #require(imported.accommodations.first?.coverMedia?.filename)
+        let importedFilename = try #require(imported.accommodations.first?.mediaItems.first?.filename)
         #expect(FileManager.default.fileExists(atPath: importedStore.imageURL(for: importedFilename).path))
-        #expect(imported.accommodations.first?.coverMedia?.sourceName == "Eigen foto")
+        #expect(imported.accommodations.first?.mediaItems.first?.sourceName == "Eigen foto")
+        #expect(imported.accommodations.first?.presentationMedia == nil)
+    }
+
+    @Test @MainActor func tripArchiveExportsOneRegisteredPackageAndImportsDirectly() throws {
+        let root = temporaryDirectory(named: "DirectArchive")
+        defer { try? FileManager.default.removeItem(at: root) }
+        let trip = try repository.currentTrip()
+        let store = AttachmentStore(documentsDirectory: root.appendingPathComponent("Documents", isDirectory: true))
+        let archive = try TripArchiveService().export(trip: trip, attachmentStore: store,
+                                                       destinationDirectory: root)
+
+        #expect(archive.pathExtension == "triparchive")
+        #expect((try archive.resourceValues(forKeys: [.isDirectoryKey]).isDirectory) == true)
+        #expect(FileManager.default.fileExists(atPath: archive.appendingPathComponent("trip.json").path))
+        #expect(FileManager.default.fileExists(atPath: archive.appendingPathComponent("media").path))
+        #expect(try TripArchiveService().preview(url: archive).manifest.trip == trip)
+    }
+
+    @Test @MainActor func tripArchiveImportsAfterCoordinatedCopyToAnotherLocation() throws {
+        let root = temporaryDirectory(named: "CopiedArchive")
+        defer { try? FileManager.default.removeItem(at: root) }
+        let trip = try repository.currentTrip()
+        let store = AttachmentStore(documentsDirectory: root.appendingPathComponent("Documents", isDirectory: true))
+        let archive = try TripArchiveService().export(trip: trip, attachmentStore: store,
+                                                       destinationDirectory: root)
+        let receivedDirectory = root.appendingPathComponent("Received", isDirectory: true)
+        try FileManager.default.createDirectory(at: receivedDirectory, withIntermediateDirectories: true)
+        let received = receivedDirectory.appendingPathComponent("Shared.triparchive", isDirectory: true)
+        try FileManager.default.copyItem(at: archive, to: received)
+        let staged = try TripArchiveService().stageImport(from: received,
+                                                           temporaryDirectory: root.appendingPathComponent("Staged", isDirectory: true))
+
+        #expect(staged.pathExtension == "triparchive")
+        #expect(try TripArchiveService().preview(url: staged).manifest.trip.id == trip.id)
+    }
+
+    @Test @MainActor func tripArchiveRoundTripWithoutMedia() throws {
+        let root = temporaryDirectory(named: "NoMediaArchive")
+        defer { try? FileManager.default.removeItem(at: root) }
+        let trip = try repository.currentTrip()
+        let store = AttachmentStore(documentsDirectory: root.appendingPathComponent("Documents", isDirectory: true))
+        let archive = try TripArchiveService().export(trip: trip, attachmentStore: store,
+                                                       destinationDirectory: root)
+        let preview = try TripArchiveService().preview(url: archive)
+        let importedStore = AttachmentStore(documentsDirectory: root.appendingPathComponent("Imported", isDirectory: true))
+        let imported = try TripArchiveService().importedTrip(from: preview, attachmentStore: importedStore)
+
+        #expect(imported == trip)
+        #expect(preview.imageCount == 0)
+    }
+
+    @Test @MainActor func tripArchiveReportsMissingManifest() throws {
+        let root = temporaryDirectory(named: "MissingManifest")
+        defer { try? FileManager.default.removeItem(at: root) }
+        let archive = root.appendingPathComponent("Broken.triparchive", isDirectory: true)
+        try FileManager.default.createDirectory(at: archive, withIntermediateDirectories: true)
+
+        do {
+            _ = try TripArchiveService().preview(url: archive)
+            Issue.record("Expected missing trip.json to fail")
+        } catch TripArchiveError.missingManifest {
+            #expect(true)
+        }
+    }
+
+    @Test @MainActor func tripArchiveReportsCorruptJSON() throws {
+        let root = temporaryDirectory(named: "CorruptArchive")
+        defer { try? FileManager.default.removeItem(at: root) }
+        let archive = root.appendingPathComponent("Broken.triparchive", isDirectory: true)
+        try FileManager.default.createDirectory(at: archive, withIntermediateDirectories: true)
+        try Data("{ definitely-not-json".utf8).write(to: archive.appendingPathComponent("trip.json"))
+
+        do {
+            _ = try TripArchiveService().preview(url: archive)
+            Issue.record("Expected corrupt trip.json to fail")
+        } catch TripArchiveError.corruptManifest(let detail) {
+            #expect(!detail.isEmpty)
+        }
+    }
+
+    @Test @MainActor func tripArchiveBalancesSecurityScopedAccessWhileStaging() throws {
+        let root = temporaryDirectory(named: "ScopedArchive")
+        defer { try? FileManager.default.removeItem(at: root) }
+        let trip = try repository.currentTrip()
+        let store = AttachmentStore(documentsDirectory: root.appendingPathComponent("Documents", isDirectory: true))
+        let archive = try TripArchiveService().export(trip: trip, attachmentStore: store,
+                                                       destinationDirectory: root)
+        var started = false
+        var stopped = false
+        let staged = try TripArchiveService().stageImport(
+            from: archive, temporaryDirectory: root.appendingPathComponent("Staged", isDirectory: true),
+            accessSecurityScope: { _ in started = true; return true },
+            stopSecurityScope: { _ in stopped = true })
+
+        #expect(started)
+        #expect(stopped)
+        #expect(try TripArchiveService().preview(url: staged).manifest.trip.id == trip.id)
+    }
+
+    @Test @MainActor func tripArchiveAcceptsLegacyDirectoryFormat() throws {
+        let root = temporaryDirectory(named: "LegacyArchive")
+        defer { try? FileManager.default.removeItem(at: root) }
+        let legacy = root.appendingPathComponent("Thailand 2026.trip", isDirectory: true)
+        try FileManager.default.createDirectory(at: legacy.appendingPathComponent("media", isDirectory: true),
+                                                withIntermediateDirectories: true)
+        let trip = try repository.currentTrip()
+        let manifest = TripArchiveManifest(schemaVersion: TripArchiveManifest.currentSchemaVersion,
+                                           exportedAt: .now, trip: trip,
+                                           nearbySuggestions: [], favorites: [])
+        try TripJSONCoding.encoder().encode(manifest).write(to: legacy.appendingPathComponent("trip.json"))
+
+        #expect(try TripArchiveService().preview(url: legacy).manifest.trip.id == trip.id)
+    }
+
+    @Test @MainActor func existingTripMetadataCanBeEditedAndPersistsWithoutRemovingItems() throws {
+        let fixture = try makeTemporaryStore()
+        defer { try? FileManager.default.removeItem(at: fixture.directory) }
+        let original = try #require(fixture.store.trip)
+        let newStart = TripCalendar.calendar(in: original.timeZone).date(byAdding: .day, value: 3, to: original.startDate)!
+        let newEnd = TripCalendar.calendar(in: original.timeZone).date(byAdding: .day, value: -3, to: original.endDate)!
+        let updated = original.updatingMetadata(name: "Aangepaste reis", country: "Thailand & Laos",
+                                                startDate: newStart, endDate: newEnd, travelers: 3)
+        #expect(fixture.store.updateTripMetadata(updated))
+        #expect(fixture.store.selectedTripId == original.id)
+        #expect(fixture.store.trip?.flights.count == original.flights.count)
+        #expect(fixture.store.trip?.activities.count == original.activities.count)
+
+        let reloaded = TripStore(documentsDirectory: fixture.directory)
+        reloaded.load()
+        #expect(reloaded.trip?.name == "Aangepaste reis")
+        #expect(reloaded.trip?.country == "Thailand & Laos")
+        #expect(reloaded.trip?.startDate == newStart)
+        #expect(reloaded.trip?.endDate == newEnd)
+        #expect(reloaded.trip?.travelers == 3)
+    }
+
+    @Test @MainActor func importedTripIsEditableAndRemainsSelected() throws {
+        let fixture = try makeTemporaryStore()
+        defer { try? FileManager.default.removeItem(at: fixture.directory) }
+        let imported = Trip.empty(name: "Imported", country: "Thailand", startDate: .now,
+                                  endDate: .now.addingTimeInterval(86_400 * 4))
+        #expect(fixture.store.importTrip(imported, strategy: .copy))
+        let changed = imported.updatingMetadata(name: "Imported aangepast", country: "Thailand",
+                                                startDate: imported.startDate.addingTimeInterval(86_400),
+                                                endDate: imported.endDate.addingTimeInterval(86_400))
+        #expect(fixture.store.updateTripMetadata(changed))
+        #expect(fixture.store.selectedTripId == imported.id)
+        #expect(fixture.store.trip?.name == "Imported aangepast")
+    }
+
+    @Test @MainActor func presentationMediaIsSeparateFromDocumentMedia() throws {
+        let trip = try repository.currentTrip()
+        var accommodation = try #require(trip.accommodations.first)
+        let document = TripMedia(filename: "voucher.jpg", sourceName: "Document")
+        let cover = TripMedia(filename: "hotel.jpg", sourceName: "Brave Search")
+        accommodation.media = [document]
+        accommodation.presentationMedia = cover
+        let managed = ManagedTripItem.accommodation(accommodation)
+        #expect(managed.mediaItems == [document])
+        #expect(managed.presentationMedia == cover)
+
+        let removed = managed.replacingPresentationMedia(nil)
+        #expect(removed.presentationMedia == nil)
+        #expect(removed.mediaItems == [document])
+        let replaced = removed.replacingPresentationMedia(TripMedia(filename: "new-hotel.jpg"))
+        #expect(replaced.mediaItems == [document])
+    }
+
+    @Test @MainActor func oldTripWithoutPresentationMediaDecodesWithNoCover() throws {
+        let trip = try repository.currentTrip()
+        let data = try TripJSONCoding.encoder().encode(trip)
+        let decoded = try TripJSONCoding.decoder().decode(Trip.self, from: data)
+        #expect(decoded.flights.allSatisfy { $0.presentationMedia == nil })
+        #expect(decoded.accommodations.allSatisfy { $0.presentationMedia == nil })
+        #expect(decoded.activities.allSatisfy { $0.presentationMedia == nil })
+    }
+
+    @Test @MainActor func tripArchiveRoundTripIncludesLocalPresentationMedia() throws {
+        let root = temporaryDirectory(named: "CoverArchive")
+        defer { try? FileManager.default.removeItem(at: root) }
+        var trip = try repository.currentTrip()
+        let sourceStore = AttachmentStore(documentsDirectory: root.appendingPathComponent("Source", isDirectory: true))
+        let coverFilename = try sourceStore.saveImageData(testImageData(color: .systemOrange))
+        trip.accommodations[0].googlePlaceID = "ChIJ-archive-place"
+        trip.accommodations[0].presentationMedia = TripMedia(
+            filename: coverFilename,
+            sourceName: "Test cover",
+            googlePlaceID: "ChIJ-archive-place"
+        )
+        let archive = try TripArchiveService().export(trip: trip, attachmentStore: sourceStore,
+                                                       destinationDirectory: root)
+        let preview = try TripArchiveService().preview(url: archive)
+        #expect(preview.manifest.schemaVersion == 2)
+        let destinationStore = AttachmentStore(documentsDirectory: root.appendingPathComponent("Destination", isDirectory: true))
+        let imported = try TripArchiveService().importedTrip(from: preview, attachmentStore: destinationStore)
+        let importedCover = try #require(imported.accommodations.first?.presentationMedia)
+        let importedFilename = try #require(importedCover.filename)
+        #expect(importedCover.sourceName == "Test cover")
+        #expect(importedCover.googlePlaceID == "ChIJ-archive-place")
+        #expect(imported.accommodations.first?.googlePlaceID == "ChIJ-archive-place")
+        #expect(FileManager.default.fileExists(atPath: destinationStore.imageURL(for: importedFilename).path))
+    }
+
+    @Test @MainActor func versionOneArchiveWithoutCoverRemainsSupported() throws {
+        let root = temporaryDirectory(named: "VersionOneArchive")
+        defer { try? FileManager.default.removeItem(at: root) }
+        let archive = root.appendingPathComponent("Old.triparchive", isDirectory: true)
+        try FileManager.default.createDirectory(at: archive.appendingPathComponent("media", isDirectory: true),
+                                                withIntermediateDirectories: true)
+        let trip = try repository.currentTrip()
+        let manifest = TripArchiveManifest(schemaVersion: 1, exportedAt: .now, trip: trip,
+                                           nearbySuggestions: [], favorites: [])
+        try TripJSONCoding.encoder().encode(manifest).write(to: archive.appendingPathComponent("trip.json"))
+        let imported = try TripArchiveService().preview(url: archive).manifest.trip
+        #expect(imported.accommodations.allSatisfy { $0.presentationMedia == nil })
+    }
+
+    @Test @MainActor func googlePlacesUsesExistingPlaceIDWithoutTextSearch() async throws {
+        let configuration = URLSessionConfiguration.ephemeral
+        configuration.protocolClasses = [PlacesURLProtocolStub.self]
+        let session = URLSession(configuration: configuration)
+        PlacesURLProtocolStub.requests = []
+        PlacesURLProtocolStub.handler = { request in
+            #expect(request.httpMethod == "GET")
+            #expect(request.url?.path == "/v1/places/known-place")
+            return (200, Data(#"{"id":"known-place","displayName":{"text":"Known Hotel"},"formattedAddress":"Chiang Mai, Thailand","location":{"latitude":18.7,"longitude":98.9}}"#.utf8))
+        }
+        let resolver = GooglePlacesEntityResolver(configuration: .init(
+            googlePlacesAPIKey: "test-key", braveSearchAPIKey: nil, unsplashAccessKey: nil), session: session)
+        let candidates = try await resolver.resolve(query: "ignored", existingPlaceID: "known-place")
+        #expect(candidates.count == 1)
+        #expect(candidates.first?.displayName == "Known Hotel")
+        #expect(PlacesURLProtocolStub.requests.count == 1)
+    }
+
+    @Test @MainActor func googlePlacesTextSearchReturnsAmbiguousCandidatesForUserChoice() async throws {
+        let configuration = URLSessionConfiguration.ephemeral
+        configuration.protocolClasses = [PlacesURLProtocolStub.self]
+        let session = URLSession(configuration: configuration)
+        PlacesURLProtocolStub.requests = []
+        PlacesURLProtocolStub.handler = { request in
+            #expect(request.httpMethod == "POST")
+            #expect(request.url?.path == "/v1/places:searchText")
+            #expect(request.value(forHTTPHeaderField: "X-Goog-FieldMask")?.contains("places.displayName") == true)
+            return (200, Data(#"{"places":[{"id":"one","displayName":{"text":"Hotel One"},"formattedAddress":"Chiang Mai, Thailand"},{"id":"two","displayName":{"text":"Hotel Two"},"formattedAddress":"Chiang Mai, Thailand"}]}"#.utf8))
+        }
+        let resolver = GooglePlacesEntityResolver(configuration: .init(
+            googlePlacesAPIKey: "test-key", braveSearchAPIKey: nil, unsplashAccessKey: nil), session: session)
+        let candidates = try await resolver.resolve(query: "Exact Hotel Chiang Mai Thailand", existingPlaceID: nil)
+        #expect(candidates.map(\.id) == ["one", "two"])
+        #expect(candidates.first?.imageQuery == "Hotel One Chiang Mai, Thailand")
+        #expect(PlacesURLProtocolStub.requests.count == 1)
+    }
+
+    @Test @MainActor func googlePlaceIDPersistsSeparatelyFromCoverAndDocuments() throws {
+        let trip = try repository.currentTrip()
+        var accommodation = try #require(trip.accommodations.first)
+        accommodation.media = [TripMedia(filename: "voucher.jpg")]
+        let item = ManagedTripItem.accommodation(accommodation)
+            .replacingGooglePlaceID("ChIJ-place")
+            .replacingPresentationMedia(TripMedia(filename: "cover.jpg", googlePlaceID: "ChIJ-place"))
+        guard case .accommodation(let updated) = item else {
+            Issue.record("Expected accommodation")
+            return
+        }
+        #expect(updated.googlePlaceID == "ChIJ-place")
+        #expect(updated.presentationMedia?.googlePlaceID == "ChIJ-place")
+        #expect(updated.mediaItems.map(\.filename) == ["voucher.jpg"])
+
+        let decoded = try TripJSONCoding.decoder().decode(Accommodation.self,
+            from: TripJSONCoding.encoder().encode(updated))
+        #expect(decoded.googlePlaceID == "ChIJ-place")
+        #expect(decoded.mediaItems.map(\.filename) == ["voucher.jpg"])
     }
 
     @Test @MainActor func duplicateTripImportCanCopyOrReplace() throws {
@@ -1582,6 +1855,11 @@ struct ThailandHolidayAppTests {
             context.fill(CGRect(x: 0, y: 0, width: 40, height: 30))
         }
         return image.pngData()!
+    }
+
+    private func temporaryDirectory(named prefix: String) -> URL {
+        FileManager.default.temporaryDirectory
+            .appendingPathComponent("\(prefix)-\(UUID().uuidString)", isDirectory: true)
     }
 }
 
@@ -1652,4 +1930,32 @@ private final class MapOpeningSpy: MapOpening {
     func openPlace(_ location: TripLocation, name: String?) async -> Bool {
         openedPlaceNames.append(name ?? ""); return true
     }
+}
+
+private final class PlacesURLProtocolStub: URLProtocol, @unchecked Sendable {
+    nonisolated(unsafe) static var requests: [URLRequest] = []
+    nonisolated(unsafe) static var handler: ((URLRequest) throws -> (Int, Data))?
+
+    override class func canInit(with request: URLRequest) -> Bool { true }
+    override class func canonicalRequest(for request: URLRequest) -> URLRequest { request }
+
+    override func startLoading() {
+        Self.requests.append(request)
+        do {
+            let (statusCode, data) = try Self.handler?(request) ?? (500, Data())
+            let response = HTTPURLResponse(
+                url: request.url!,
+                statusCode: statusCode,
+                httpVersion: nil,
+                headerFields: ["Content-Type": "application/json"]
+            )!
+            client?.urlProtocol(self, didReceive: response, cacheStoragePolicy: .notAllowed)
+            client?.urlProtocol(self, didLoad: data)
+            client?.urlProtocolDidFinishLoading(self)
+        } catch {
+            client?.urlProtocol(self, didFailWithError: error)
+        }
+    }
+
+    override func stopLoading() {}
 }

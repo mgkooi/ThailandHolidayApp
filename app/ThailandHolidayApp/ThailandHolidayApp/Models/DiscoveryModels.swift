@@ -101,6 +101,7 @@ struct DiscoveryRecommendation: Identifiable, Equatable, Sendable {
     var editorialSignals: [EditorialSignal] = []
     var recommendationScore: Double? = nil
     var badges: Set<RecommendationBadge> = []
+    var googlePlaceID: String? = nil
 
     var location: TripLocation {
         TripLocation(placeName: name, address: address, latitude: latitude, longitude: longitude)

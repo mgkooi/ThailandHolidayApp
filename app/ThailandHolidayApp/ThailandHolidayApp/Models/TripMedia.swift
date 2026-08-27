@@ -14,18 +14,22 @@ struct TripMedia: Codable, Identifiable, Equatable, Sendable {
     var caption: String?
     var isCover: Bool
     var mediaType: TripMediaType
+    var googlePlaceID: String?
 
     init(id: UUID = UUID(), filename: String? = nil, remoteURL: URL? = nil,
          sourceURL: URL? = nil, sourceName: String? = nil, attribution: String? = nil,
-         caption: String? = nil, isCover: Bool = false, mediaType: TripMediaType = .image) {
+         caption: String? = nil, isCover: Bool = false, mediaType: TripMediaType = .image,
+         googlePlaceID: String? = nil) {
         self.id = id; self.filename = filename; self.remoteURL = remoteURL
         self.sourceURL = sourceURL; self.sourceName = sourceName; self.attribution = attribution
         self.caption = caption; self.isCover = isCover; self.mediaType = mediaType
+        self.googlePlaceID = googlePlaceID
     }
 }
 
 protocol TripMediaContaining {
     var media: [TripMedia]? { get set }
+    var presentationMedia: TripMedia? { get set }
 }
 
 extension Flight: TripMediaContaining {}
@@ -34,11 +38,14 @@ extension Activity: TripMediaContaining {}
 
 extension TripMediaContaining {
     var mediaItems: [TripMedia] { media ?? [] }
-    var coverMedia: TripMedia? { mediaItems.first(where: \.isCover) ?? mediaItems.first }
+    var coverMedia: TripMedia? { presentationMedia }
 }
 
 extension Trip {
     var allMedia: [TripMedia] {
         flights.flatMap(\.mediaItems) + accommodations.flatMap(\.mediaItems) + activities.flatMap(\.mediaItems)
+            + flights.compactMap(\.presentationMedia)
+            + accommodations.compactMap(\.presentationMedia)
+            + activities.compactMap(\.presentationMedia)
     }
 }

@@ -6,6 +6,7 @@ struct MyTripsView: View {
     @Environment(TripStore.self) private var store
     @Environment(\.dismiss) private var dismiss
     @State private var showsCreate = false
+    @State private var tripToEdit: Trip?
     @State private var tripToDelete: Trip?
     @State private var sharePayload: SharePayload?
     @State private var showsImporter = false
@@ -28,6 +29,8 @@ struct MyTripsView: View {
                                 Text(dateRange(trip)).font(.caption).foregroundStyle(.secondary)
                             }
                             Spacer()
+                            Button { tripToEdit = trip } label: { Image(systemName: "pencil") }
+                                .buttonStyle(.borderless).accessibilityLabel("Bewerk reis")
                             Button(role: .destructive) { tripToDelete = trip } label: {
                                 Image(systemName: "trash")
                             }.buttonStyle(.borderless)
@@ -36,6 +39,7 @@ struct MyTripsView: View {
                         }
                     }
                     .contextMenu {
+                        Button { tripToEdit = trip } label: { Label("Bewerk reis", systemImage: "pencil") }
                         Button { export(trip) } label: { Label("Deel reis", systemImage: "square.and.arrow.up") }
                     }
                 }
@@ -51,6 +55,7 @@ struct MyTripsView: View {
                 }
             }
             .sheet(isPresented: $showsCreate) { TripMetadataEditor() }
+            .sheet(item: $tripToEdit) { TripMetadataEditor(trip: $0) }
             .confirmationDialog(deleteTitle, isPresented: Binding(get: { tripToDelete != nil }, set: { if !$0 { tripToDelete = nil } })) {
                 Button("Verwijder reis", role: .destructive) {
                     if let id = tripToDelete?.id { _ = store.deleteTrip(id: id) }
@@ -59,7 +64,9 @@ struct MyTripsView: View {
                 Button("Annuleer", role: .cancel) { tripToDelete = nil }
             }
             .sheet(item: $sharePayload) { ShareSheet(items: [$0.url]) }
-            .fileImporter(isPresented: $showsImporter, allowedContentTypes: [.item]) { result in handleImport(result) }
+            .fileImporter(isPresented: $showsImporter, allowedContentTypes: [.tripArchive, .folder, .json]) { result in
+                handleImport(result)
+            }
             .sheet(item: $importPreview) { preview in TripImportPreviewView(preview: preview) { strategy in
                 importTrip(preview, strategy: strategy)
             } }
@@ -83,10 +90,9 @@ struct MyTripsView: View {
     private func handleImport(_ result: Result<URL, Error>) {
         do {
             let source = try result.get()
-            let accessed = source.startAccessingSecurityScopedResource(); defer { if accessed { source.stopAccessingSecurityScopedResource() } }
-            let local = FileManager.default.temporaryDirectory.appendingPathComponent("Imported-\(UUID().uuidString).trip", isDirectory: true)
-            try FileManager.default.copyItem(at: source, to: local)
-            importPreview = try TripArchiveService().preview(url: local)
+            let service = TripArchiveService()
+            let local = try service.stageImport(from: source)
+            importPreview = try service.preview(url: local)
         } catch { importError = error.localizedDescription }
     }
 
@@ -158,7 +164,18 @@ private struct TripMetadataEditor: View {
     @State private var country = ""
     @State private var startDate = Date()
     @State private var endDate = Date()
-    @State private var notes = ""
+    @State private var travelers = 1
+
+    private let trip: Trip?
+
+    init(trip: Trip? = nil) {
+        self.trip = trip
+        _name = State(initialValue: trip?.name ?? "")
+        _country = State(initialValue: trip?.country ?? "")
+        _startDate = State(initialValue: trip?.startDate ?? Date())
+        _endDate = State(initialValue: trip?.endDate ?? Date())
+        _travelers = State(initialValue: trip?.travelers ?? 1)
+    }
 
     var body: some View {
         NavigationStack {
@@ -168,19 +185,26 @@ private struct TripMetadataEditor: View {
                     TextField("Land (optioneel)", text: $country)
                     DatePicker("Startdatum", selection: $startDate, displayedComponents: .date)
                     DatePicker("Einddatum", selection: $endDate, in: startDate..., displayedComponents: .date)
-                    TextField("Notities (optioneel)", text: $notes, axis: .vertical)
+                    Stepper("Reizigers: \(travelers)", value: $travelers, in: 1...20)
                 }
                 Section { Text("Deze datums zijn metadata en beperken reisitems niet.").font(.caption).foregroundStyle(.secondary) }
             }
-            .navigationTitle("Nieuwe reis")
+            .navigationTitle(trip == nil ? "Nieuwe reis" : "Bewerk reis")
             .toolbar {
                 ToolbarItem(placement: .cancellationAction) { Button("Annuleer") { dismiss() } }
                 ToolbarItem(placement: .confirmationAction) {
                     Button("Bewaar") {
-                        let trip = Trip.empty(name: name.trimmingCharacters(in: .whitespacesAndNewlines),
-                                              country: country.trimmingCharacters(in: .whitespacesAndNewlines),
-                                              startDate: startDate, endDate: endDate)
-                        if store.addTrip(trip) { dismiss() }
+                        let cleanName = name.trimmingCharacters(in: .whitespacesAndNewlines)
+                        let cleanCountry = country.trimmingCharacters(in: .whitespacesAndNewlines)
+                        let saved = if let trip {
+                            store.updateTripMetadata(trip.updatingMetadata(name: cleanName, country: cleanCountry,
+                                                                           startDate: startDate, endDate: endDate,
+                                                                           travelers: travelers))
+                        } else {
+                            store.addTrip(Trip.empty(name: cleanName, country: cleanCountry,
+                                                     startDate: startDate, endDate: endDate))
+                        }
+                        if saved { dismiss() }
                     }.disabled(name.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
                 }
             }

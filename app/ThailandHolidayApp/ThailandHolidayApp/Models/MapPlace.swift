@@ -13,15 +13,18 @@ struct MapPlace: Identifiable, Equatable, Sendable {
     let longitude: Double
     let phone: String?
     let websiteURL: URL?
+    let googlePlaceID: String?
 
     var location: TripLocation {
         TripLocation(placeName: placeName ?? name, address: address, latitude: latitude, longitude: longitude)
     }
 
     init(id: String, name: String, category: String? = nil, placeName: String? = nil, address: String? = nil,
-         latitude: Double, longitude: Double, phone: String? = nil, websiteURL: URL? = nil) {
+         latitude: Double, longitude: Double, phone: String? = nil, websiteURL: URL? = nil,
+         googlePlaceID: String? = nil) {
         self.id=id; self.name=name; self.category=category; self.placeName=placeName; self.address=address
         self.latitude=latitude; self.longitude=longitude; self.phone=phone; self.websiteURL=websiteURL
+        self.googlePlaceID=googlePlaceID
     }
 
     @MainActor init(mapItem: MKMapItem) {

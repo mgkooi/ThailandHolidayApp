@@ -77,13 +77,10 @@ struct TripStatusCard: View {
     let destination: Destination?
     let accommodation: Accommodation
     let timeZone: TimeZone
+    var coverAction: () -> Void = {}
 
     var body: some View {
         VStack(alignment: .leading, spacing: 18) {
-            if accommodation.coverMedia != nil {
-                TripMediaImage(media: accommodation.coverMedia).scaledToFill().frame(height: 150).clipped()
-                    .clipShape(RoundedRectangle(cornerRadius: 18))
-            }
             HStack(alignment: .top) {
                 VStack(alignment: .leading, spacing: 4) {
                     Text("JE VERBLIJF")
@@ -137,10 +134,24 @@ struct TripStatusCard: View {
                     }
                     .buttonStyle(TravelCardButtonStyle())
                 }
+                NavigationLink { TripItemEditorView(kind: .accommodation, itemID: accommodation.id) } label: {
+                    Text("Details").frame(maxWidth: .infinity)
+                }.buttonStyle(TravelCardButtonStyle())
+                Button(action: coverAction) { Text("Omslag").frame(maxWidth: .infinity) }
+                    .buttonStyle(TravelCardButtonStyle())
             }
         }
         .padding(20)
-        .background(Color.travelTeal, in: RoundedRectangle(cornerRadius: 24))
+        .frame(minHeight: accommodation.presentationMedia == nil ? 0 : 220, alignment: .bottom)
+        .background {
+            RoundedRectangle(cornerRadius: 24).fill(Color.travelTeal)
+            if accommodation.presentationMedia != nil {
+                TripMediaImage(media: accommodation.presentationMedia).scaledToFill()
+                LinearGradient(colors: [.black.opacity(0.08), .black.opacity(0.78)],
+                               startPoint: .top, endPoint: .bottom)
+            }
+        }
+        .clipShape(RoundedRectangle(cornerRadius: 24))
         .travelCardShadow()
         .accessibilityElement(children: .contain)
     }
@@ -202,13 +213,10 @@ struct TodayDiscoveryCard: View {
 struct FlightCard: View {
     let flight: Flight
     let timeZone: TimeZone
+    var coverAction: () -> Void = {}
 
     var body: some View {
         VStack(alignment: .leading, spacing: 16) {
-            if flight.coverMedia != nil {
-                TripMediaImage(media: flight.coverMedia).scaledToFill().frame(height: 82).clipped()
-                    .clipShape(RoundedRectangle(cornerRadius: 12))
-            }
             HStack {
                 Label("Vlucht", systemImage: "airplane")
                     .font(.headline)
@@ -249,9 +257,27 @@ struct FlightCard: View {
             }
             .font(.caption.weight(.medium))
             .foregroundStyle(.secondary)
+
+            HStack(spacing: 10) {
+                NavigationLink { TripItemEditorView(kind: .flight, itemID: flight.id) } label: {
+                    Text("Details").frame(maxWidth: .infinity)
+                }.buttonStyle(TravelCardButtonStyle())
+                Button(action: coverAction) { Text("Omslag").frame(maxWidth: .infinity) }
+                    .buttonStyle(TravelCardButtonStyle())
+            }
         }
         .padding(18)
-        .background(.background, in: RoundedRectangle(cornerRadius: 20))
+        .frame(minHeight: flight.presentationMedia == nil ? 0 : 210, alignment: .bottom)
+        .foregroundStyle(flight.presentationMedia == nil ? Color.primary : Color.white)
+        .background {
+            RoundedRectangle(cornerRadius: 20).fill(Color(uiColor: .systemBackground))
+            if flight.presentationMedia != nil {
+                Color.white
+                TripMediaImage(media: flight.presentationMedia).scaledToFit().padding(24)
+                LinearGradient(colors: [.black.opacity(0.05), .black.opacity(0.76)], startPoint: .top, endPoint: .bottom)
+            }
+        }
+        .clipShape(RoundedRectangle(cornerRadius: 20))
         .travelCardShadow()
         .accessibilityElement(children: .contain)
     }
@@ -272,6 +298,43 @@ struct FlightCard: View {
             }
         }
         .frame(maxWidth: .infinity, alignment: alignment == .leading ? .leading : .trailing)
+    }
+}
+
+struct ActivityHeroCard: View {
+    let activity: Activity
+    let timeZone: TimeZone
+    let coverAction: () -> Void
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 10) {
+            Spacer(minLength: 80)
+            Text(activity.title).font(.title3.bold())
+            if let place = activity.location?.placeName?.nilIfBlank { Text(place).font(.subheadline) }
+            Text(timeRange).font(.subheadline.monospacedDigit().weight(.semibold))
+            HStack(spacing: 10) {
+                NavigationLink { ActivityDetailView(activityID: activity.id) } label: {
+                    Text("Details").frame(maxWidth: .infinity)
+                }.buttonStyle(TravelCardButtonStyle())
+                Button(action: coverAction) { Text("Omslag").frame(maxWidth: .infinity) }
+                    .buttonStyle(TravelCardButtonStyle())
+            }
+        }
+        .foregroundStyle(.white)
+        .padding(18)
+        .frame(minHeight: 200, alignment: .bottomLeading)
+        .background {
+            TripMediaImage(media: activity.presentationMedia).scaledToFill()
+            LinearGradient(colors: [.black.opacity(0.05), .black.opacity(0.82)], startPoint: .top, endPoint: .bottom)
+        }
+        .clipShape(RoundedRectangle(cornerRadius: 20))
+        .travelCardShadow()
+    }
+
+    private var timeRange: String {
+        let formatter = AppFormatters.time(in: timeZone)
+        guard let end = activity.endTime else { return formatter.string(from: activity.startTime) }
+        return "\(formatter.string(from: activity.startTime)) – \(formatter.string(from: end))"
     }
 }
 

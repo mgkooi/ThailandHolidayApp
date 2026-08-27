@@ -142,13 +142,43 @@ enum ManagedTripItem: Identifiable, Equatable {
         }
     }
 
+    var presentationMedia: TripMedia? {
+        switch self {
+        case .flight(let value): value.presentationMedia
+        case .accommodation(let value): value.presentationMedia
+        case .activity(let value): value.presentationMedia
+        default: nil
+        }
+    }
+
+    func replacingPresentationMedia(_ media: TripMedia?) -> ManagedTripItem {
+        switch self {
+        case .flight(var value): value.presentationMedia = media; return .flight(value)
+        case .accommodation(var value): value.presentationMedia = media; return .accommodation(value)
+        case .activity(var value): value.presentationMedia = media; return .activity(value)
+        default: return self
+        }
+    }
+
+    func replacingGooglePlaceID(_ placeID: String?) -> ManagedTripItem {
+        switch self {
+        case .accommodation(var value): value.googlePlaceID = placeID; return .accommodation(value)
+        case .activity(var value):
+            if value.location == nil {
+                value.location = TripLocation(placeName: value.title, address: nil,
+                                              latitude: value.latitude, longitude: value.longitude)
+            }
+            value.location?.googlePlaceID = placeID
+            return .activity(value)
+        default: return self
+        }
+    }
+
     func assigningLocalFilename(_ filename: String) -> ManagedTripItem {
         var values = mediaItems
-        if values.isEmpty { values = [TripMedia(filename: filename, isCover: true)] }
+        if values.isEmpty { values = [TripMedia(filename: filename)] }
         else {
-            let coverIndex = values.firstIndex(where: \.isCover) ?? values.startIndex
-            values[coverIndex].filename = filename
-            if !values.contains(where: \.isCover) { values[coverIndex].isCover = true }
+            values[values.startIndex].filename = filename
         }
         return replacingMedia(values).replacingAttachment(with: filename)
     }

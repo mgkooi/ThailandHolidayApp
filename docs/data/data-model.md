@@ -64,7 +64,10 @@ only the relative filename.
 storage is intentional for backwards compatibility: older `thailand-trip.json` and
 `travel-library.json` files decode it as an empty `mediaItems` collection. A media
 record keeps a stable UUID, local relative filename, optional remote/source URLs,
-attribution, caption and cover state. The shape is generic and can be adopted by
+attribution and caption. These arrays are travel documents (screenshots, vouchers,
+boarding passes and photos) and are never selected automatically for presentation.
+Each supported item has an independent optional `presentationMedia: TripMedia?`. It
+uses the same attachment storage but is rendered only as cover/hero image. The shape is generic and can be adopted by
 restaurants, viewpoints and other item types without changing the media services.
 
 Chosen remote images and user photos are normalized to JPEG (maximum long edge 2400
@@ -73,24 +76,42 @@ remain remote and full-resolution data is fetched only after the user confirms a
 result. Views prefer the local cover and fall back to the remote URL or a native
 placeholder.
 
-`TripArchiveService` exports a directory package named `<trip name>.trip`:
+`TripArchiveService` exports a directory-backed package named `<trip name>.triparchive`:
 
 ```text
-<trip name>.trip/
+<trip name>.triparchive/
 ├── trip.json       # schemaVersion, exportedAt, complete Trip aggregate
 └── media/          # local attachments, never Base64
 ```
 
-Schema version 1 preserves all aggregate UUIDs. Import first decodes a read-only
+The archive is exposed to iOS as one `<trip name>.triparchive` package document. Its
+UTI conforms to `com.apple.package`, so Share Sheet, Files, and iCloud Drive treat the
+directory-backed structure as a single file. Imports are first copied through
+security-scoped, coordinated access into app-controlled temporary storage. The importer
+also accepts the earlier unregistered directory format and a standalone manifest JSON.
+
+Schema version 2 adds presentation media; version 1 and older JSON without covers remain
+accepted. Export/import preserves all aggregate UUIDs. Import first decodes a read-only
 preview. Local filenames are collision-safe when copied into the receiving app. A
 duplicate Trip UUID can either replace the aggregate or create a copy with a new root
 Trip UUID; nested UUIDs and their relationships stay intact.
 
-Image search is isolated behind `MediaSearchService`. The included optional adapter
-uses the official Unsplash Search Photos API. Set `UNSPLASH_ACCESS_KEY` as an injected
-Info.plist/build-configuration value outside Git to enable it. With no key, offline,
+Image search is isolated behind `MediaSearchService`. `PreferredMediaSearchService`
+uses Brave Image Search for targeted web results and falls back to Unsplash when Brave
+is unavailable and Unsplash is configured. Keys are supplied through the
+`BRAVE_SEARCH_API_KEY` and `UNSPLASH_ACCESS_KEY` Xcode build settings, substituted into
+Info.plist; `Config/Secrets.xcconfig.example` documents local setup and the real
+`Secrets.xcconfig` is ignored by Git. With no key, offline,
 provider failure, or missing images, the UI remains functional and shows a controlled
 fallback.
+
+For physical items, `GooglePlacesEntityResolver` first resolves the exact name, city,
+and country with Places API (New). A persisted `googlePlaceID` skips Text Search and
+goes directly to Place Details. Ambiguous searches return up to five candidates for an
+explicit user choice. Only the resolved display name, formatted address, coordinates,
+and cacheable Place ID enrich the item/search query. Google Place Photos are not stored
+or exported; the actual offline cover still comes from Brave, Unsplash, or the user.
+`GOOGLE_PLACES_API_KEY` is injected through the same external build configuration.
 
 Rented transport is normalized as `RentalVehicleBooking` in `rentalVehicles`, with a
 `RentalVehicleType` for car, scooter, motorcycle, bicycle, e-bike, quad, or other.

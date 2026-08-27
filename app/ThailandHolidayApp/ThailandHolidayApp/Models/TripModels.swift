@@ -168,9 +168,10 @@ extension Trip {
              rentalVehicles: [], otherItems: [], transportItems: [], tripDays: [], bookingLinks: [])
     }
 
-    func updatingMetadata(name: String, country: String, startDate: Date, endDate: Date) -> Trip {
+    func updatingMetadata(name: String, country: String, startDate: Date, endDate: Date,
+                          travelers: Int? = nil) -> Trip {
         Trip(id: id, name: name, country: country, startDate: startDate, endDate: endDate,
-             travelers: travelers, timeZoneIdentifier: timeZoneIdentifier, destinations: destinations,
+             travelers: travelers ?? self.travelers, timeZoneIdentifier: timeZoneIdentifier, destinations: destinations,
              flights: flights, accommodations: accommodations, activities: activities, transfers: transfers,
              ferries: ferries, trains: trains, restaurants: restaurants, rentalVehicles: rentalVehicles,
              otherItems: otherItems, transportItems: transportItems, tripDays: tripDays, bookingLinks: bookingLinks)
@@ -182,6 +183,7 @@ struct TripLocation: Codable, Equatable, Sendable {
     var address: String?
     var latitude: Double?
     var longitude: Double?
+    var googlePlaceID: String? = nil
 
     var hasUsableLocation: Bool {
         (latitude != nil && longitude != nil)
@@ -223,18 +225,20 @@ struct Flight: Identifiable, Codable, Equatable {
     var bookingURL: URL? = nil
     var attachmentFilename: String? = nil
     var media: [TripMedia]? = nil
+    var presentationMedia: TripMedia? = nil
 
     enum CodingKeys: String, CodingKey {
         case id, date, airline, flightNumber, originAirport, destinationAirport
         case departureTime, arrivalDate, arrivalTime, departureAirport, arrivalAirport, bookingReference
-        case aircraft, cabin, notes, bookingURL, attachmentFilename, media
+        case aircraft, cabin, notes, bookingURL, attachmentFilename, media, presentationMedia
     }
 
     init(id: UUID, date: Date, airline: String, flightNumber: String, originAirport: String,
          destinationAirport: String, departureTime: Date, arrivalDate: Date? = nil, arrivalTime: Date,
          departureAirport: AirportInfo? = nil, arrivalAirport: AirportInfo? = nil,
          bookingReference: String? = nil, aircraft: String?, cabin: String?, notes: String? = nil, bookingURL: URL? = nil,
-         attachmentFilename: String? = nil, media: [TripMedia]? = nil) {
+         attachmentFilename: String? = nil, media: [TripMedia]? = nil,
+         presentationMedia: TripMedia? = nil) {
         self.id = id; self.date = date; self.airline = airline; self.flightNumber = flightNumber
         self.originAirport = originAirport; self.destinationAirport = destinationAirport
         self.departureTime = departureTime; self.arrivalDate = arrivalDate ?? date; self.arrivalTime = arrivalTime
@@ -242,6 +246,7 @@ struct Flight: Identifiable, Codable, Equatable {
         self.aircraft = aircraft; self.cabin = cabin; self.notes = notes
         self.bookingURL = bookingURL; self.attachmentFilename = attachmentFilename
         self.media = media
+        self.presentationMedia = presentationMedia
     }
 
     init(from decoder: Decoder) throws {
@@ -264,6 +269,7 @@ struct Flight: Identifiable, Codable, Equatable {
         bookingURL = try container.decodeIfPresent(URL.self, forKey: .bookingURL)
         attachmentFilename = try container.decodeIfPresent(String.self, forKey: .attachmentFilename)
         media = try container.decodeIfPresent([TripMedia].self, forKey: .media)
+        presentationMedia = try container.decodeIfPresent(TripMedia.self, forKey: .presentationMedia)
     }
 
     func arrivalDateTime(in timeZone: TimeZone) -> Date {
@@ -298,10 +304,13 @@ struct Accommodation: Identifiable, Codable, Equatable {
     var notes: String? = nil
     var attachmentFilename: String? = nil
     var media: [TripMedia]? = nil
+    var presentationMedia: TripMedia? = nil
+    var googlePlaceID: String? = nil
 
     var destinationId: UUID? { destinationID }
     var location: TripLocation {
-        TripLocation(placeName: placeName, address: address.nilIfBlank, latitude: latitude, longitude: longitude)
+        TripLocation(placeName: placeName, address: address.nilIfBlank, latitude: latitude, longitude: longitude,
+                     googlePlaceID: googlePlaceID)
     }
     var checkInDate: Date { checkIn }
     var checkOutDate: Date { checkOut }
@@ -472,6 +481,7 @@ struct Activity: Identifiable, Codable, Equatable {
     var isCompleted: Bool
     var bookingReference: String? = nil
     var media: [TripMedia]? = nil
+    var presentationMedia: TripMedia? = nil
 
     func updating(
         destinationId: UUID?? = nil,
@@ -507,7 +517,8 @@ struct Activity: Identifiable, Codable, Equatable {
             isFavorite: isFavorite ?? self.isFavorite,
             isCompleted: isCompleted ?? self.isCompleted,
             bookingReference: bookingReference,
-            media: media
+            media: media,
+            presentationMedia: presentationMedia
         )
     }
 }
