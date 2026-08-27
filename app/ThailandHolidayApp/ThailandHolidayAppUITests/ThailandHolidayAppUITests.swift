@@ -158,13 +158,12 @@ final class ThailandHolidayAppUITests: XCTestCase {
         app.buttons["Bekijk alles"].tap()
         XCTAssertTrue(app.navigationBars["Ontdekken"].waitForExistence(timeout: 5))
         XCTAssertTrue(app.buttons["Restaurants"].isSelected)
-        XCTAssertTrue(app.staticTexts["Ontdekken rond Chiang Mai"].waitForExistence(timeout: 5))
-        XCTAssertTrue(app.buttons["Ontdek"].firstMatch.waitForExistence(timeout: 5))
-        XCTAssertTrue(app.buttons["Navigeer"].firstMatch.exists)
+        XCTAssertTrue(app.staticTexts["Rond Chiang Mai"].waitForExistence(timeout: 5))
+        XCTAssertTrue(app.staticTexts["Restaurants test 1"].waitForExistence(timeout: 5))
 
         let search = app.textFields["discoveryLocationField"]
         search.tap(); search.typeText("Koh Tao\n")
-        XCTAssertTrue(app.staticTexts["Ontdekken rond Koh Tao"].waitForExistence(timeout: 10))
+        XCTAssertTrue(app.staticTexts["Rond Koh Tao"].waitForExistence(timeout: 10))
     }
 
     @MainActor
@@ -198,20 +197,55 @@ final class ThailandHolidayAppUITests: XCTestCase {
         XCTAssertTrue(search.waitForExistence(timeout: 5))
         search.tap(); search.typeText("Koh Tao\n")
         let viewpoints = app.buttons["Viewpoints"]
-        XCTAssertTrue(viewpoints.waitForExistence(timeout: 5))
-        viewpoints.tap()
-        XCTAssertTrue(viewpoints.isSelected)
+        XCTAssertTrue(viewpoints.firstMatch.waitForExistence(timeout: 5))
+        viewpoints.firstMatch.tap()
+        XCTAssertTrue(viewpoints.firstMatch.isSelected)
         XCTAssertTrue(app.staticTexts["Viewpoints test 1"].waitForExistence(timeout: 5))
 
         app.buttons["Filters"].tap()
         XCTAssertTrue(app.navigationBars["Filters"].waitForExistence(timeout: 5))
         app.buttons["Toepassen"].tap()
-        let add = app.buttons["Toevoegen aan reis"].firstMatch
-        XCTAssertTrue(add.waitForExistence(timeout: 5))
-        add.tap()
-        XCTAssertTrue(app.navigationBars["Nieuw activiteit"].waitForExistence(timeout: 5))
-        XCTAssertTrue(app.staticTexts["Viewpoint"].exists)
-        XCTAssertEqual(app.textFields["Titel"].value as? String, "Viewpoints test 1")
+        app.staticTexts["Viewpoints test 1"].tap()
+        XCTAssertTrue(app.navigationBars["Details"].waitForExistence(timeout: 5))
+        XCTAssertTrue(app.buttons["Navigeer"].exists)
+        XCTAssertTrue(app.buttons["Bewaar"].exists)
+        app.buttons["Voeg aan dag toe"].tap()
+        XCTAssertTrue(app.navigationBars["Voeg aan dag toe"].waitForExistence(timeout: 5))
+        app.buttons["Voeg toe"].tap()
+        XCTAssertTrue(app.buttons["Bekijk Vandaag"].waitForExistence(timeout: 5))
+        app.buttons["Bekijk Vandaag"].tap()
+        XCTAssertTrue(app.staticTexts["Viewpoints test 1"].waitForExistence(timeout: 8))
+    }
+
+    @MainActor
+    func testDiscoverDetailsSaveAddFiltersAndMapMode() throws {
+        let app = launchIsolatedApp()
+        app.tabBars.buttons["Ontdekken"].tap()
+        XCTAssertTrue(app.staticTexts.matching(NSPredicate(format: "label BEGINSWITH 'Ontdek '")).firstMatch.waitForExistence(timeout: 8))
+        XCTAssertTrue(app.buttons["Eten"].exists)
+        app.buttons["Eten"].tap()
+        XCTAssertTrue(app.staticTexts["Restaurants test 1"].waitForExistence(timeout: 8))
+        app.buttons.matching(NSPredicate(format: "label BEGINSWITH 'Filters'")).firstMatch.tap()
+        XCTAssertTrue(app.navigationBars["Filters"].waitForExistence(timeout: 5))
+        app.buttons["Toepassen"].tap()
+        app.staticTexts["Restaurants test 1"].tap()
+        XCTAssertTrue(app.navigationBars["Details"].waitForExistence(timeout: 5))
+        XCTAssertTrue(app.buttons["Navigeer"].exists)
+        app.buttons["Bewaar"].tap()
+        XCTAssertTrue(app.buttons["Bewaard"].waitForExistence(timeout: 5))
+        app.buttons["Sluit"].tap()
+        app.segmentedControls.buttons["Kaart"].tap()
+        XCTAssertTrue(app.maps.firstMatch.waitForExistence(timeout: 5))
+        app.segmentedControls.buttons["Lijst"].tap()
+        XCTAssertTrue(app.descendants(matching: .any)["discoveryResultList"].waitForExistence(timeout: 5))
+    }
+
+    @MainActor
+    func testDiscoverShowsEmptyStateForIncompatibleFilters() throws {
+        let app = launchIsolatedApp(extraArguments: ["--ui-testing-empty-discovery"])
+        app.tabBars.buttons["Ontdekken"].tap()
+        XCTAssertTrue(app.staticTexts["Geen resultaten binnen deze filters"].waitForExistence(timeout: 8))
+        XCTAssertTrue(app.buttons["Wis filters"].exists)
     }
 
     @MainActor
@@ -250,9 +284,9 @@ final class ThailandHolidayAppUITests: XCTestCase {
     }
 
     @MainActor
-    private func launchIsolatedApp() -> XCUIApplication {
+    private func launchIsolatedApp(extraArguments: [String] = []) -> XCUIApplication {
         let app = XCUIApplication()
-        app.launchArguments = ["--ui-testing", "--ui-testing-reset"]
+        app.launchArguments = ["--ui-testing", "--ui-testing-reset"] + extraArguments
         app.launch()
         XCTAssertTrue(app.tabBars.buttons["Reis"].waitForExistence(timeout: 15))
         return app

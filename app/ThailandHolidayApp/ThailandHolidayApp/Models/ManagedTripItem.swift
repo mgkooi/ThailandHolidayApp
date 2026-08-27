@@ -197,6 +197,7 @@ enum ManagedTripItem: Identifiable, Equatable {
             value.location?.googlePlaceID = placeID
             return .activity(value)
         case .restaurant(var value): value.googlePlaceID = placeID; return .restaurant(value)
+        case .other(var value): value.googlePlaceID = placeID; return .other(value)
         default: return self
         }
     }

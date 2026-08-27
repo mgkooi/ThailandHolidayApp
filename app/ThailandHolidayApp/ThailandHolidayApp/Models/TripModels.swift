@@ -426,6 +426,7 @@ struct TripEvent: Identifiable, Codable, Equatable {
     var attachmentFilename: String?
     var media: [TripMedia]? = nil
     var presentationMedia: TripMedia? = nil
+    var googlePlaceID: String? = nil
 }
 
 enum RentalVehicleType: String, Codable, CaseIterable, Equatable {
@@ -730,6 +731,9 @@ struct Favorite: Identifiable, Codable, Equatable {
     let websiteURL: URL?
     let mapsURL: URL?
     let savedAt: Date
+    var address: String? = nil
+    var ratingSnapshot: Double? = nil
+    var reviewCountSnapshot: Int? = nil
 }
 
 struct TripDataPackage: Codable, Equatable {

@@ -11,14 +11,22 @@ struct SearchLocation: Equatable, Sendable {
 }
 
 enum DiscoveryCategory: String, CaseIterable, Identifiable, Hashable, Sendable {
-    case restaurant, activity, viewpoint, atm, sevenEleven
+    case restaurant, cafe, bar, activity, attraction, museum, temple, park, viewpoint, market, shopping, atm, sevenEleven
 
     var id: String { rawValue }
     var title: String {
         switch self {
         case .restaurant: "Restaurants"
+        case .cafe: "Cafés"
+        case .bar: "Bars"
         case .activity: "Activiteiten"
+        case .attraction: "Bezienswaardigheden"
+        case .museum: "Musea"
+        case .temple: "Tempels"
+        case .park: "Parken"
         case .viewpoint: "Viewpoints"
+        case .market: "Markten"
+        case .shopping: "Winkels"
         case .atm: "ATM's"
         case .sevenEleven: "7-Eleven"
         }
@@ -26,8 +34,16 @@ enum DiscoveryCategory: String, CaseIterable, Identifiable, Hashable, Sendable {
     var query: String {
         switch self {
         case .restaurant: "Restaurant"
+        case .cafe: "Cafe"
+        case .bar: "Bar"
         case .activity: "Tourist attraction"
+        case .attraction: "Tourist attraction"
+        case .museum: "Museum"
+        case .temple: "Temple"
+        case .park: "Park"
         case .viewpoint: "Scenic viewpoint"
+        case .market: "Market"
+        case .shopping: "Shopping"
         case .atm: "ATM cash machine"
         case .sevenEleven: "7-Eleven"
         }
@@ -35,14 +51,54 @@ enum DiscoveryCategory: String, CaseIterable, Identifiable, Hashable, Sendable {
     var symbolName: String {
         switch self {
         case .restaurant: "fork.knife"
+        case .cafe: "cup.and.saucer.fill"
+        case .bar: "wineglass.fill"
         case .activity: "figure.hiking"
+        case .attraction: "camera.fill"
+        case .museum: "building.columns.fill"
+        case .temple: "building.columns"
+        case .park: "leaf.fill"
         case .viewpoint: "binoculars.fill"
+        case .market: "basket.fill"
+        case .shopping: "bag.fill"
         case .atm: "banknote.fill"
         case .sevenEleven: "cart.fill"
         }
     }
     var supportsRecommendations: Bool { self != .atm && self != .sevenEleven }
-    var supportsPrice: Bool { self == .restaurant || self == .activity || self == .viewpoint }
+    var supportsPrice: Bool { [.restaurant, .cafe, .bar, .activity, .attraction, .market, .shopping].contains(self) }
+    var isFood: Bool { [.restaurant, .cafe, .bar].contains(self) }
+    var googleIncludedType: String? {
+        switch self {
+        case .restaurant: "restaurant"
+        case .cafe: "cafe"
+        case .bar: "bar"
+        case .activity, .attraction: "tourist_attraction"
+        case .museum: "museum"
+        case .temple: "hindu_temple"
+        case .park: "park"
+        case .viewpoint: nil
+        case .market: "market"
+        case .shopping: "shopping_mall"
+        case .atm: "atm"
+        case .sevenEleven: "convenience_store"
+        }
+    }
+}
+
+enum DiscoveryFeed: String, CaseIterable, Identifiable, Sendable {
+    case forYou, food, activities, sights, viewpoints, hiddenGems, nearby
+    var id: String { rawValue }
+    var title: String { switch self { case .forYou: "Voor jou"; case .food: "Eten"; case .activities: "Doen"; case .sights: "Zien"; case .viewpoints: "Viewpoints"; case .hiddenGems: "Verborgen parels"; case .nearby: "In de buurt" } }
+    var categories: [DiscoveryCategory] { switch self {
+        case .forYou: [.restaurant, .activity, .attraction, .viewpoint, .market]
+        case .food: [.restaurant, .cafe, .bar]
+        case .activities: [.activity, .park, .market]
+        case .sights: [.attraction, .museum, .temple]
+        case .viewpoints: [.viewpoint]
+        case .hiddenGems: [.restaurant, .activity, .attraction, .viewpoint]
+        case .nearby: [.restaurant, .cafe, .activity, .attraction, .viewpoint]
+    } }
 }
 
 enum DiscoveryPriceLevel: Int, CaseIterable, Equatable, Hashable, Sendable {
@@ -102,6 +158,11 @@ struct DiscoveryRecommendation: Identifiable, Equatable, Sendable {
     var recommendationScore: Double? = nil
     var badges: Set<RecommendationBadge> = []
     var googlePlaceID: String? = nil
+    var primaryType: String? = nil
+    var isOpenNow: Bool? = nil
+    var previewImageURL: URL? = nil
+    var photoAttribution: String? = nil
+    var sourceProviders: Set<String> = []
 
     var location: TripLocation {
         TripLocation(placeName: name, address: address, latitude: latitude, longitude: longitude)
@@ -118,11 +179,14 @@ struct DiscoveryFilters: Equatable, Sendable {
     var starWorthyOnly = false
     var hiddenGemOnly = false
     var instagramWorthyOnly = false
+    var openNowOnly = false
+    var categories: Set<DiscoveryCategory> = []
 
     var activeCount: Int {
         (priceLevels.isEmpty ? 0 : 1) + (minimumRating == nil ? 0 : 1)
             + (minimumReviewCount == nil ? 0 : 1) + (maxDistanceMeters == 10_000 ? 0 : 1)
-            + [starWorthyOnly, hiddenGemOnly, instagramWorthyOnly].filter { $0 }.count
+            + [starWorthyOnly, hiddenGemOnly, instagramWorthyOnly, openNowOnly].filter { $0 }.count
+            + (categories.isEmpty ? 0 : 1)
     }
 
     func includes(_ result: DiscoveryRecommendation, category: DiscoveryCategory? = nil) -> Bool {
@@ -132,6 +196,8 @@ struct DiscoveryFilters: Equatable, Sendable {
         }
         if let minimumRating { guard let rating = result.rating, rating >= minimumRating else { return false } }
         if let minimumReviewCount { guard let count = result.reviewCount, count >= minimumReviewCount else { return false } }
+        if openNowOnly && result.isOpenNow != true { return false }
+        if !categories.isEmpty && !categories.contains(result.category) { return false }
         let derivedBadges = result.badges.isEmpty ? RecommendationScorer().score(result).badges : result.badges
         if starWorthyOnly && !derivedBadges.contains(.starWorthy) { return false }
         if hiddenGemOnly && !derivedBadges.contains(.hiddenGem) { return false }
@@ -148,19 +214,34 @@ struct RecommendationScore: Equatable, Sendable {
 }
 
 struct RecommendationScorer: Sendable {
+    struct Weights: Equatable, Sendable {
+        var rating = 24.0
+        var reviews = 10.0
+        var distance = 16.0
+        var category = 8.0
+        var editorial = 12.0
+        var availability = 5.0
+        static let standard = Weights()
+    }
+    let weights: Weights
+    init(weights: Weights = .standard) { self.weights = weights }
+
     func score(_ item: DiscoveryRecommendation) -> RecommendationScore {
         guard item.category.supportsRecommendations else { return RecommendationScore(value: proximity(item), badges: []) }
         let rating = item.rating ?? 0
         let reviews = item.reviewCount ?? 0
         let editorial = Set(item.editorialSignals.filter { $0.matchConfidence >= 0.7 }.map(\.source)).count
-        var value = proximity(item)
-        if item.rating != nil { value += max(0, rating - 3) * 20 }
-        if reviews > 0 { value += min(log10(Double(reviews) + 1) * 8, 30) }
-        value += Double(editorial) * 12
+        var value = proximity(item) * weights.distance / 15
+        if item.rating != nil { value += max(0, rating - 3) / 2 * weights.rating }
+        if reviews > 0 { value += min(log10(Double(reviews) + 1) / 4, 1) * weights.reviews }
+        value += min(Double(editorial), 3) / 3 * weights.editorial
+        value += item.category.supportsRecommendations ? weights.category : 0
+        if item.isOpenNow == true { value += weights.availability }
+        if item.isOpenNow == false { value -= weights.availability }
 
         var badges = Set<RecommendationBadge>()
         if rating >= 4.6 && reviews >= 250 && (reviews >= 1_000 || editorial >= 2) { badges.insert(.starWorthy) }
-        if rating >= 4.5 && (50...499).contains(reviews) && editorial >= 1 { badges.insert(.hiddenGem) }
+        if rating >= 4.5 && (50...1_500).contains(reviews) && (item.distanceMeters ?? 0) <= 15_000 { badges.insert(.hiddenGem) }
         let scenic = item.category == .viewpoint || item.editorialSignals.contains { $0.isScenic && $0.matchConfidence >= 0.7 }
         if scenic && (item.category == .viewpoint || rating >= 4.3 || editorial >= 1) { badges.insert(.instagramWorthy) }
         return RecommendationScore(value: value, badges: badges)
@@ -187,6 +268,27 @@ struct RecommendationScorer: Sendable {
     }
 }
 
+enum DiscoverySort: String, CaseIterable, Identifiable, Sendable {
+    case recommended, distance, rating, reviewCount
+    var id: String { rawValue }
+    var title: String { switch self { case .recommended: "Aanbevolen"; case .distance: "Afstand"; case .rating: "Rating"; case .reviewCount: "Meeste reviews" } }
+}
+
+struct DiscoveryDiversifier {
+    func diversified(_ values: [DiscoveryResult], maximumConsecutive: Int = 2) -> [DiscoveryResult] {
+        var remaining = values
+        var output: [DiscoveryResult] = []
+        while !remaining.isEmpty {
+            let recent = output.suffix(maximumConsecutive).map(\.category)
+            let index = recent.count == maximumConsecutive && Set(recent).count == 1
+                ? (remaining.firstIndex { $0.category != recent[0] } ?? remaining.startIndex)
+                : remaining.startIndex
+            output.append(remaining.remove(at: index))
+        }
+        return output
+    }
+}
+
 protocol DiscoveryProviding {
     func search(category: DiscoveryCategory, near location: SearchLocation,
                 radiusMeters: Double) async throws -> [DiscoveryRecommendation]
@@ -197,7 +299,9 @@ protocol EditorialRecommendationProviding {
                          category: DiscoveryCategory) async throws -> [EditorialRecommendation]
 }
 
-struct DisabledEditorialRecommendationProvider: EditorialRecommendationProviding {
+protocol EditorialSourceService: EditorialRecommendationProviding {}
+
+struct DisabledEditorialRecommendationProvider: EditorialSourceService {
     func recommendations(for location: SearchLocation,
                          category: DiscoveryCategory) async throws -> [EditorialRecommendation] { [] }
 }
@@ -260,6 +364,7 @@ struct EditorialRecommendationMatcher {
         let placeName = normalize(place.name)
         let placeCity = normalize(city)
         return recommendations.compactMap { editorial in
+            guard editorial.signal.matchConfidence >= 0.7 else { return nil }
             guard normalize(editorial.normalizedName) == placeName, normalize(editorial.city) == placeCity else { return nil }
             guard editorial.category == nil || editorial.category == place.category else { return nil }
             if let latitude = editorial.latitude, let longitude = editorial.longitude {

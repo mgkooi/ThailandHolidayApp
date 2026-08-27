@@ -154,6 +154,29 @@ final class TripStore {
     }
 
     @discardableResult
+    func saveDiscovery(_ result: DiscoveryResult) -> Bool {
+        let externalID = result.googlePlaceID ?? result.id
+        if library?.favorites.contains(where: { $0.externalProvider == "Google Places" && $0.externalID == externalID }) == true {
+            return true
+        }
+        let previous = library
+        library?.favorites.append(Favorite(id: UUID(), suggestionID: nil,
+            externalProvider: result.googlePlaceID == nil ? "Discovery" : "Google Places",
+            externalID: externalID, name: result.name, category: result.category.rawValue,
+            latitude: result.latitude, longitude: result.longitude, websiteURL: result.websiteURL,
+            mapsURL: nil, savedAt: Date(), address: result.address,
+            ratingSnapshot: result.rating, reviewCountSnapshot: result.reviewCount))
+        guard save() else { library = previous; return false }
+        recordMutation()
+        return true
+    }
+
+    func isDiscoverySaved(_ result: DiscoveryResult) -> Bool {
+        let identity = result.googlePlaceID ?? result.id
+        return favorites.contains { $0.externalID == identity }
+    }
+
+    @discardableResult
     func importTrip(_ imported: Trip, strategy: TripImportStrategy,
                     nearbySuggestions importedSuggestions: [NearbySuggestion] = [],
                     favorites importedFavorites: [Favorite] = []) -> Bool {

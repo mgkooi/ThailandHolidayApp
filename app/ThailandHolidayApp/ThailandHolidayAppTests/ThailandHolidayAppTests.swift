@@ -1926,6 +1926,98 @@ struct ThailandHolidayAppTests {
         #expect(imported.restaurants.first?.googlePlaceID == "place-restaurant")
     }
 
+    @Test func discoveryQueryUsesBoundedRadiusCategoryAndLocationWithoutExtraFields() throws {
+        let location = SearchLocation(name: "Chiang Mai", latitude: 18.79, longitude: 98.98)
+        let query = DiscoveryQueryBuilder().googleQuery(category: .restaurant, location: location, radiusMeters: 5_000)
+        #expect(query.textQuery == "Restaurant near Chiang Mai")
+        #expect(query.includedType == "restaurant")
+        #expect(query.locationBias.circle.radius == 5_000)
+        #expect(query.maxResultCount == 20)
+        #expect(GooglePlacesDiscoveryProvider.fieldMask.contains("places.userRatingCount"))
+        #expect(!GooglePlacesDiscoveryProvider.fieldMask.contains("photos"))
+    }
+
+    @Test @MainActor func googlePlacesDiscoveryParsesMetadataComputesDistanceAndCaches() async throws {
+        PlacesURLProtocolStub.requests = []
+        PlacesURLProtocolStub.handler = { _ in (200, Data("""
+        {"places":[{"id":"place-1","displayName":{"text":"Khao Soi"},"formattedAddress":"Chiang Mai","location":{"latitude":18.791,"longitude":98.98},"primaryType":"restaurant","rating":4.7,"userRatingCount":3800,"priceLevel":"PRICE_LEVEL_INEXPENSIVE","currentOpeningHours":{"openNow":true},"websiteUri":"https://example.com"}]}
+        """.utf8)) }
+        let configuration = URLSessionConfiguration.ephemeral
+        configuration.protocolClasses = [PlacesURLProtocolStub.self]
+        let provider = GooglePlacesDiscoveryProvider(configuration: .init(googlePlacesAPIKey: "test", braveSearchAPIKey: nil, unsplashAccessKey: nil), session: URLSession(configuration: configuration))
+        let location = SearchLocation(name: "Chiang Mai", latitude: 18.79, longitude: 98.98)
+        let first = try await provider.search(around: location, category: .restaurant, radiusMeters: 5_000)
+        let second = try await provider.search(around: location, category: .restaurant, radiusMeters: 5_000)
+        #expect(first == second)
+        #expect(PlacesURLProtocolStub.requests.count == 1)
+        #expect(first.first?.googlePlaceID == "place-1")
+        #expect(first.first?.rating == 4.7)
+        #expect(first.first?.reviewCount == 3_800)
+        #expect(first.first?.priceLevel == .inexpensive)
+        #expect(first.first?.isOpenNow == true)
+        #expect((first.first?.distanceMeters ?? 10_000) < 200)
+        #expect(PlacesURLProtocolStub.requests.first?.value(forHTTPHeaderField: "X-Goog-FieldMask") == GooglePlacesDiscoveryProvider.fieldMask)
+    }
+
+    @Test func discoveryRankingWeightsEvidenceDistanceHiddenGemsAndDiversity() {
+        let strong = DiscoveryResult(id: "strong", name: "Strong", category: .restaurant, address: nil,
+            latitude: 0, longitude: 0, distanceMeters: 900, phone: nil, websiteURL: nil,
+            rating: 4.7, reviewCount: 4_000, isOpenNow: true)
+        let tiny = DiscoveryResult(id: "tiny", name: "Tiny", category: .restaurant, address: nil,
+            latitude: 0, longitude: 0, distanceMeters: 200, phone: nil, websiteURL: nil,
+            rating: 5.0, reviewCount: 4, isOpenNow: true)
+        let gem = DiscoveryResult(id: "gem", name: "Gem", category: .activity, address: nil,
+            latitude: 0, longitude: 0, distanceMeters: 2_000, phone: nil, websiteURL: nil,
+            rating: 4.6, reviewCount: 180)
+        let ranked = RecommendationScorer().enrichAndRank([tiny, gem, strong])
+        #expect(ranked.first?.id == "strong")
+        #expect(ranked.first { $0.id == "gem" }?.badges.contains(.hiddenGem) == true)
+        let diversified = DiscoveryDiversifier().diversified([strong, tiny, strong, gem])
+        #expect(diversified[2].category == .activity)
+    }
+
+    @Test func discoveryFiltersOpenNowCategoryAndSortMetadataReliably() {
+        let value = DiscoveryResult(id: "open", name: "Open", category: .cafe, address: nil,
+            latitude: 0, longitude: 0, distanceMeters: 800, phone: nil, websiteURL: nil,
+            rating: 4.5, reviewCount: 100, priceLevel: .moderate, isOpenNow: true)
+        let filters = DiscoveryFilters(maxDistanceMeters: 1_000, priceLevels: [.moderate], minimumRating: 4.3,
+            minimumReviewCount: 50, openNowOnly: true, categories: [.cafe])
+        #expect(filters.includes(value))
+        var closed = value; closed.isOpenNow = false
+        #expect(!filters.includes(closed))
+    }
+
+    @Test func editorialLowConfidenceDoesNotAutoLink() {
+        let place = DiscoveryResult(id: "wat", name: "Wat Umong", category: .temple, address: nil,
+            latitude: 18.78, longitude: 98.95, distanceMeters: 1_000, phone: nil, websiteURL: nil)
+        let low = EditorialRecommendation(normalizedName: "Wat Umong", city: "Chiang Mai", latitude: nil,
+            longitude: nil, signal: .init(source: .lonelyPlanet, sourceURL: nil, matchConfidence: 0.4))
+        #expect(EditorialRecommendationMatcher().signals(for: place, city: "Chiang Mai", recommendations: [low]).isEmpty)
+    }
+
+    @Test func discoveryMapsToExistingTripTypesAndPreservesPlaceIdentity() throws {
+        let trip = try repository.currentTrip()
+        let date = trip.startDate
+        let restaurant = DiscoveryResult(id: "r", name: "Food", category: .restaurant, address: "Address",
+            latitude: 1, longitude: 2, distanceMeters: nil, phone: nil, websiteURL: nil, googlePlaceID: "place-r")
+        let viewpoint = DiscoveryResult(id: "v", name: "View", category: .viewpoint, address: "Hill",
+            latitude: 3, longitude: 4, distanceMeters: nil, phone: nil, websiteURL: nil, googlePlaceID: "place-v")
+        let practical = DiscoveryResult(id: "a", name: "ATM", category: .atm, address: "Road",
+            latitude: 5, longitude: 6, distanceMeters: nil, phone: nil, websiteURL: nil, googlePlaceID: "place-a")
+        let mapper = DiscoveryTripItemMapper()
+        guard case .restaurant(let restaurantItem) = mapper.item(from: restaurant, date: date, time: date, trip: trip),
+              case .activity(let activityItem) = mapper.item(from: viewpoint, date: date, time: date, trip: trip),
+              case .other(let otherItem) = mapper.item(from: practical, date: date, time: date, trip: trip) else {
+            Issue.record("Onjuiste discovery mapping"); return
+        }
+        #expect(restaurantItem.googlePlaceID == "place-r")
+        #expect(activityItem.location?.googlePlaceID == "place-v")
+        #expect(activityItem.category == ItineraryCategory.viewpoint.rawValue)
+        #expect(otherItem.googlePlaceID == "place-a")
+        var plannedTrip = trip; plannedTrip.restaurants.append(restaurantItem)
+        #expect(DiscoveryDuplicateDetector().contains(restaurant, on: date, in: plannedTrip))
+    }
+
     @MainActor
     private func makeTemporaryStore() throws -> (store: TripStore, directory: URL) {
         let directory = FileManager.default.temporaryDirectory

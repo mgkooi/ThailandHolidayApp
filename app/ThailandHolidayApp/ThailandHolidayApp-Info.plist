@@ -33,6 +33,7 @@
 	<key>GOOGLE_PLACES_API_KEY</key><string>$(GOOGLE_PLACES_API_KEY)</string>
 	<key>UNSPLASH_ACCESS_KEY</key><string>$(UNSPLASH_ACCESS_KEY)</string>
 	<key>NSCameraUsageDescription</key><string>Camera wordt gebruikt om boekingen te scannen.</string>
+	<key>NSLocationWhenInUseUsageDescription</key><string>Je locatie wordt alleen in Ontdekken gebruikt om relevante plekken in de buurt te vinden.</string>
 	<key>UIApplicationSceneManifest</key><dict><key>UIApplicationSupportsMultipleScenes</key><false/></dict>
 	<key>UIApplicationSupportsIndirectInputEvents</key><true/>
 	<key>UILaunchScreen</key><dict/>

@@ -16,4 +16,6 @@ final class AppFeedbackState {
     }
 
     func clear() { message = nil }
+
+    func show(_ value: String) { message = value }
 }

@@ -8,6 +8,7 @@ struct ThailandHolidayAppApp: App {
     @State private var navigationState = AppNavigationState()
     @State private var discoverySession: DiscoverySession
     @State private var feedbackState = AppFeedbackState()
+    @State private var discoveryLocationService = DiscoveryDeviceLocationService()
 
     init() {
         UITestConfiguration.resetDocumentsIfRequested()
@@ -15,7 +16,7 @@ struct ThailandHolidayAppApp: App {
         let geocoder: any LocationGeocoding = UITestConfiguration.isEnabled
             ? UITestLocationGeocodingService() : LocationGeocodingService()
         let discovery: any LocalDiscoverySearching = UITestConfiguration.isEnabled
-            ? UITestDiscoveryService() : MapKitLocalDiscoveryService()
+            ? UITestDiscoveryService() : PreferredDiscoveryService()
         _discoverySession = State(initialValue: DiscoverySession(searcher: discovery, geocoder: geocoder))
     }
 
@@ -38,6 +39,7 @@ struct ThailandHolidayAppApp: App {
             .environment(navigationState)
             .environment(discoverySession)
             .environment(feedbackState)
+            .environment(discoveryLocationService)
             .environment(\.locationGeocoder, locationGeocoder)
             .environment(\.mapSearchProvider, mapSearchProvider)
             .overlay(alignment: .top) {

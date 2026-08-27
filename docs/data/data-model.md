@@ -226,14 +226,21 @@ arrival date and time.
 `SearchLocation` is transient coordinate context shared by Vandaag and Ontdekken; it
 is never persisted in the trip JSON. `TripSearchLocationResolver` selects active
 accommodation coordinates (or geocoded accommodation text), Destination coordinates,
-then a dated Activity location. It never requests device GPS permission.
+then a dated Activity location. Ontdekken may request when-in-use device location only
+when that screen establishes context. GPS is used only within 100 km of the active
+trip context; otherwise the trip-derived location remains active.
 
-`LocalDiscoverySearching` isolates local-search providers from SwiftUI. The MapKit
-implementation searches a bounded region, maps `MKMapItem` values into app-owned
-`DiscoveryResult` values, calculates straight-line distance, sorts nearest first and
-caches coordinate-bucket/category requests. `DiscoverySession` owns only transient UI
-state for restaurant, ATM, 7-Eleven and activity searches, including manually
-geocoded place queries.
+`LocalDiscoverySearching` isolates local-search providers from SwiftUI.
+`GooglePlacesDiscoveryProvider` is primary and uses Places API (New) Text Search with
+an explicit field mask, bounded location bias and short-lived cache. MapKit is the
+graceful fallback. `DiscoverySession` owns transient results, request generations,
+mixed feeds and manually geocoded place queries.
+
+Google ratings, review counts, price and open-now state are transient. Favorites keep
+a Place ID, name, category, coordinates and small rating/review snapshots. Adding to a
+trip creates an app-owned Restaurant, Activity/Viewpoint or Other item. Google photos
+are not requested or persisted/exported; covers are selected separately through the
+existing Brave/Unsplash/user-photo flow.
 
 ## Daily date and map context
 

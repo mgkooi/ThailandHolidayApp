@@ -162,25 +162,38 @@ final class DiscoverySession {
     private let editorialProvider: any EditorialRecommendationProviding
     var activeLocation: SearchLocation?
     var selectedCategory: DiscoveryCategory = .restaurant
+    var selectedFeed: DiscoveryFeed? = .forYou
     private(set) var results: [DiscoveryResult] = []
     private(set) var state: DiscoveryLoadState = .idle
     private var searchGeneration = 0
     private(set) var searchRadiusMeters: Double = 25_000
 
     init(searcher: any LocalDiscoverySearching, geocoder: any LocationGeocoding,
-         editorialProvider: any EditorialRecommendationProviding = DisabledEditorialRecommendationProvider()) {
+         editorialProvider: any EditorialRecommendationProviding) {
         self.searcher = searcher; self.geocoder = geocoder; self.editorialProvider = editorialProvider
+    }
+
+    convenience init(searcher: any LocalDiscoverySearching, geocoder: any LocationGeocoding) {
+        self.init(searcher: searcher, geocoder: geocoder,
+                  editorialProvider: DisabledEditorialRecommendationProvider())
     }
 
     func activate(_ location: SearchLocation, category: DiscoveryCategory = .restaurant,
                   radiusMeters: Double = 25_000) async {
-        activeLocation = location; selectedCategory = category
+        activeLocation = location; selectedCategory = category; selectedFeed = nil
         searchRadiusMeters = radiusMeters
         await refresh()
     }
 
     func select(_ category: DiscoveryCategory, radiusMeters: Double? = nil) async {
-        selectedCategory = category
+        selectedCategory = category; selectedFeed = nil
+        if let radiusMeters { searchRadiusMeters = radiusMeters }
+        await refresh()
+    }
+
+    func selectFeed(_ feed: DiscoveryFeed, radiusMeters: Double? = nil) async {
+        selectedFeed = feed
+        if let first = feed.categories.first { selectedCategory = first }
         if let radiusMeters { searchRadiusMeters = radiusMeters }
         await refresh()
     }
@@ -209,18 +222,27 @@ final class DiscoverySession {
         searchGeneration += 1
         let generation = searchGeneration
         let category = selectedCategory
+        let feed = selectedFeed
         let radius = searchRadiusMeters
         state = .loading
         do {
-            let found: [DiscoveryResult]
-            if let radiusSearcher = searcher as? any RadiusLocalDiscoverySearching {
-                found = try await radiusSearcher.search(around: activeLocation, category: category, radiusMeters: radius)
-            } else {
-                found = try await searcher.search(around: activeLocation, category: category)
+            var found: [DiscoveryResult] = []
+            for requestedCategory in feed?.categories ?? [category] {
+                let values: [DiscoveryResult]
+                if let radiusSearcher = searcher as? any RadiusLocalDiscoverySearching {
+                    values = try await radiusSearcher.search(around: activeLocation, category: requestedCategory, radiusMeters: radius)
+                } else {
+                    values = try await searcher.search(around: activeLocation, category: requestedCategory)
+                }
+                found.append(contentsOf: values)
             }
             guard generation == searchGeneration, self.activeLocation == activeLocation,
-                  selectedCategory == category else { return }
-            var local = found.filter { $0.distanceMeters.map { $0 <= radius } ?? false }
+                  selectedCategory == category, selectedFeed == feed else { return }
+            var seen = Set<String>()
+            var local = found.filter { candidate in
+                let identity = candidate.googlePlaceID ?? candidate.id
+                return seen.insert(identity).inserted && (candidate.distanceMeters.map { $0 <= radius } ?? false)
+            }
             if category.supportsRecommendations,
                let editorial = try? await editorialProvider.recommendations(for: activeLocation, category: category) {
                 let matcher = EditorialRecommendationMatcher()
@@ -233,7 +255,11 @@ final class DiscoverySession {
                 }
             }
             guard generation == searchGeneration else { return }
-            results = RecommendationScorer().enrichAndRank(local)
+            var ranked = RecommendationScorer().enrichAndRank(local)
+            if feed == .hiddenGems { ranked = ranked.filter { $0.badges.contains(.hiddenGem) } }
+            if feed == .nearby { ranked.sort(by: DiscoveryResult.nearestFirst) }
+            if feed == .forYou { ranked = DiscoveryDiversifier().diversified(ranked) }
+            results = ranked
             state = results.isEmpty ? .empty : .loaded
         } catch {
             guard generation == searchGeneration else { return }
@@ -244,10 +270,15 @@ final class DiscoverySession {
 
 struct UITestDiscoveryService: LocalDiscoverySearching {
     func search(around location: SearchLocation, category: DiscoveryCategory) async throws -> [DiscoveryResult] {
-        (0..<4).map { index in
+        if ProcessInfo.processInfo.arguments.contains("--ui-testing-empty-discovery") { return [] }
+        return (0..<4).map { index in
             DiscoveryResult(id: "ui-\(category.rawValue)-\(index)", name: "\(category.title) test \(index + 1)",
                 category: category, address: "Testadres \(index + 1)", latitude: location.latitude + Double(index) * 0.001,
-                longitude: location.longitude, distanceMeters: Double(index + 1) * 250, phone: nil, websiteURL: nil)
+                longitude: location.longitude, distanceMeters: Double(index + 1) * 250, phone: nil,
+                websiteURL: URL(string: "https://example.com/\(category.rawValue)/\(index)"),
+                rating: 4.7 - Double(index) * 0.1, reviewCount: 1200 - index * 200,
+                priceLevel: category.isFood ? .moderate : nil, googlePlaceID: "ui-place-\(category.rawValue)-\(index)",
+                primaryType: category.rawValue, isOpenNow: index != 3, sourceProviders: ["UI Fixture"])
         }
     }
 }
