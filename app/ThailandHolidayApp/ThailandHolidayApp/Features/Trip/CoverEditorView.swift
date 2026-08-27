@@ -24,6 +24,11 @@ struct CoverEditorView: View {
                         if let attribution = media.attribution?.nilIfBlank ?? media.sourceName?.nilIfBlank {
                             Text(attribution).font(.caption).foregroundStyle(.secondary)
                         }
+                        Picker("Weergave", selection: presentationStyle) {
+                            Text("Foto").tag(TripMediaPresentationStyle.photo)
+                            Text("Logo").tag(TripMediaPresentationStyle.logo)
+                        }
+                        .pickerStyle(.segmented)
                     } else {
                         ContentUnavailableView("Geen omslag", systemImage: kind.symbolName,
                             description: Text("Documenten worden nooit automatisch als omslag gebruikt."))
@@ -84,17 +89,38 @@ struct CoverEditorView: View {
         case .flight(let value): builder.flight(carrierName: value.airline, aircraft: value.aircraft)
         case .activity(let value): builder.activity(name: value.title, place: value.location?.placeName,
             country: trip.country)
-        default: trip.country
+        case .train(let value): [value.operatorName, value.trainNumber, value.originStation, value.destinationStation]
+            .filter { !$0.isEmpty }.joined(separator: " ")
+        case .ferry(let value): [value.operatorName, value.departureLocation, value.arrivalLocation]
+            .filter { !$0.isEmpty }.joined(separator: " ")
+        case .transfer(let value): [value.provider, value.type.title, value.origin, value.destination]
+            .filter { !$0.isEmpty }.joined(separator: " ")
+        case .restaurant(let value): builder.activity(name: value.name, place: value.address, country: trip.country)
+        case .other(let value): [value.title, value.location, trip.country].compactMap { $0 }.joined(separator: " ")
+        case .rentalVehicle(let value): [value.company, value.vehicleDescription, trip.country]
+            .compactMap { $0 }.joined(separator: " ")
         }
     }
 
-    private var searchSubject: MediaSearchSubject { kind == .flight ? .flight : .place }
+    private var searchSubject: MediaSearchSubject { [.flight, .train, .ferry, .transfer].contains(kind) ? .flight : .place }
     private var googlePlaceID: String? {
         switch item {
         case .accommodation(let value): value.googlePlaceID ?? value.presentationMedia?.googlePlaceID
         case .activity(let value): value.location?.googlePlaceID ?? value.presentationMedia?.googlePlaceID
+        case .restaurant(let value): value.googlePlaceID ?? value.presentationMedia?.googlePlaceID
         default: nil
         }
+    }
+
+    private var presentationStyle: Binding<TripMediaPresentationStyle> {
+        Binding(
+            get: { item?.presentationMedia?.presentationStyle ?? .photo },
+            set: { style in
+                guard let item, var media = item.presentationMedia else { return }
+                media.presentationStyle = style
+                save(data: nil, metadata: media)
+            }
+        )
     }
 
     private func save(data: Data?, metadata: TripMedia?) {

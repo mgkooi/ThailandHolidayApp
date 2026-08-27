@@ -344,6 +344,18 @@ final class TripStore {
             .sorted { $0.time < $1.time }
     }
 
+    func transfers(on date: Date) -> [Transfer] { items(trip?.transfers ?? [], date: date, keyPath: \.date) }
+    func ferries(on date: Date) -> [Ferry] { items(trip?.ferries ?? [], date: date, keyPath: \.date) }
+    func trains(on date: Date) -> [TrainTrip] { items(trip?.trains ?? [], date: date, keyPath: \.date) }
+    func rentalVehicles(on date: Date) -> [RentalVehicleBooking] { items(trip?.rentalVehicles ?? [], date: date, keyPath: \.pickupDate) }
+    func otherItems(on date: Date) -> [TripEvent] { items(trip?.otherItems ?? [], date: date, keyPath: \.date) }
+
+    private func items<Value>(_ values: [Value], date: Date, keyPath: KeyPath<Value, Date>) -> [Value] {
+        guard let trip else { return [] }
+        let calendar = TripCalendar.calendar(in: trip.timeZone)
+        return values.filter { calendar.isDate($0[keyPath: keyPath], inSameDayAs: date) }
+    }
+
     func timelineSections() -> [TimelineDaySection] {
         guard let trip else { return [] }
         return TripTimelineBuilder(trip: trip).sections()

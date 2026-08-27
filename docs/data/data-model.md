@@ -96,6 +96,14 @@ preview. Local filenames are collision-safe when copied into the receiving app. 
 duplicate Trip UUID can either replace the aggregate or create a copy with a new root
 Trip UUID; nested UUIDs and their relationships stay intact.
 
+All managed itinerary types can carry two independent media collections. `media` and
+the legacy `attachmentFilename` represent documents such as tickets and vouchers;
+`presentationMedia` is the optional visual cover. A cover can explicitly use `photo`
+(full-bleed crop) or `logo` (contained) presentation. These new fields are optional so
+older trip JSON remains decodable. Archive filename remapping covers both document and
+presentation media for flights, stays, transfers, ferries, trains, rental vehicles,
+restaurants, activities, and other events.
+
 Image search is isolated behind `MediaSearchService`. `PreferredMediaSearchService`
 uses Brave Image Search for targeted web results and falls back to Unsplash when Brave
 is unavailable and Unsplash is configured. Keys are supplied through the

@@ -71,6 +71,110 @@ struct TodayHeader: View {
     }
 }
 
+struct TodayActionButton: View {
+    let symbol: String
+    let accessibilityLabel: String
+    var accessibilityHint: String? = nil
+    var destination: AnyView? = nil
+    var action: (() -> Void)? = nil
+
+    var body: some View {
+        Group {
+            if let destination {
+                NavigationLink { destination } label: { buttonLabel }
+            } else {
+                Button(action: { action?() }) { buttonLabel }
+            }
+        }
+        .buttonStyle(.plain)
+        .accessibilityLabel(accessibilityLabel)
+        .accessibilityHint(accessibilityHint ?? "")
+        .accessibilityIdentifier("todayAction.\(accessibilityLabel)")
+    }
+
+    private var buttonLabel: some View {
+        Image(systemName: symbol)
+            .font(.body.weight(.semibold))
+            .foregroundStyle(.white)
+            .frame(width: 44, height: 44)
+            .background(.ultraThinMaterial, in: Circle())
+            .overlay { Circle().stroke(.white.opacity(0.24), lineWidth: 0.5) }
+            .contentShape(Circle())
+    }
+}
+
+struct TodayHeroCard<Content: View, Actions: View>: View {
+    let kind: TripItemKind
+    let media: TripMedia?
+    var minimumHeight: CGFloat = 220
+    let content: Content
+    let actions: Actions
+
+    init(kind: TripItemKind, media: TripMedia?, minimumHeight: CGFloat = 220,
+         @ViewBuilder content: () -> Content, @ViewBuilder actions: () -> Actions) {
+        self.kind = kind
+        self.media = media
+        self.minimumHeight = minimumHeight
+        self.content = content()
+        self.actions = actions()
+    }
+
+    var body: some View {
+        ZStack(alignment: .bottomLeading) {
+            background
+            LinearGradient(colors: [.black.opacity(media == nil ? 0.05 : 0.18), .black.opacity(0.86)],
+                           startPoint: .top, endPoint: .bottom)
+            VStack(alignment: .leading, spacing: 12) {
+                content
+                HStack(spacing: 10) { actions }
+            }
+            .padding(18)
+        }
+        .frame(maxWidth: .infinity, minHeight: minimumHeight, alignment: .bottomLeading)
+        .foregroundStyle(.white)
+        .clipShape(RoundedRectangle(cornerRadius: 22, style: .continuous))
+        .contentShape(RoundedRectangle(cornerRadius: 22, style: .continuous))
+        .travelCardShadow()
+        .accessibilityElement(children: .contain)
+        .accessibilityIdentifier("todayHeroCard.\(kind.rawValue)")
+    }
+
+    @ViewBuilder private var background: some View {
+        if let media {
+            if media.presentationStyle == .logo {
+                LinearGradient(colors: [.white, Color(uiColor: .secondarySystemBackground)],
+                               startPoint: .topLeading, endPoint: .bottomTrailing)
+                TripMediaImage(media: media).scaledToFit().padding(34)
+                    .frame(maxWidth: .infinity, maxHeight: .infinity)
+            } else {
+                TripMediaImage(media: media).scaledToFill()
+                    .frame(maxWidth: .infinity, maxHeight: .infinity)
+                    .clipped()
+                    .accessibilityIdentifier("todayHeroCover.fullBleed")
+            }
+        } else {
+            LinearGradient(colors: [fallbackColor.opacity(0.92), fallbackColor.opacity(0.58)],
+                           startPoint: .topLeading, endPoint: .bottomTrailing)
+            Image(systemName: kind.symbolName)
+                .font(.system(size: 86, weight: .semibold))
+                .foregroundStyle(.white.opacity(0.2))
+                .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topTrailing)
+                .padding(24)
+        }
+    }
+
+    private var fallbackColor: Color {
+        switch kind {
+        case .flight: .travelCoral
+        case .accommodation: .travelTeal
+        case .train, .ferry, .transfer, .rentalVehicle: .travelPurple
+        case .restaurant: .travelCoral
+        case .activity: .travelOrange
+        case .other: .secondary
+        }
+    }
+}
+
 struct TripStatusCard: View {
     @Environment(\.openURL) private var openURL
 
@@ -80,80 +184,33 @@ struct TripStatusCard: View {
     var coverAction: () -> Void = {}
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 18) {
-            HStack(alignment: .top) {
-                VStack(alignment: .leading, spacing: 4) {
-                    Text("JE VERBLIJF")
-                        .font(.caption.weight(.bold))
-                        .tracking(1.1)
-                        .foregroundStyle(.white.opacity(0.8))
-                    Text(accommodation.placeName ?? destination?.name ?? accommodation.name)
-                        .font(.title2.bold())
-                        .foregroundStyle(.white)
-                }
-                Spacer()
-                Image(systemName: "leaf.fill")
-                    .font(.title2)
-                    .foregroundStyle(Color.travelSun)
-                    .accessibilityHidden(true)
-            }
-
+        TodayHeroCard(kind: .accommodation, media: accommodation.presentationMedia) {
+            Text("JE VERBLIJF").font(.caption.bold()).tracking(1.1).foregroundStyle(.white.opacity(0.8))
+            Text(accommodation.placeName ?? destination?.name ?? accommodation.name).font(.title2.bold())
             VStack(alignment: .leading, spacing: 5) {
                 Label(accommodation.name, systemImage: "bed.double.fill")
                     .font(.headline)
-                Text(accommodation.roomDescription)
+                if !accommodation.roomDescription.isEmpty { Text(accommodation.roomDescription)
                     .font(.subheadline)
-                    .foregroundStyle(.white.opacity(0.82))
+                    .foregroundStyle(.white.opacity(0.82)) }
             }
-            .foregroundStyle(.white)
-
             HStack(spacing: 16) {
                 Label(dateRange, systemImage: "calendar")
                 Label(nightsText, systemImage: "moon.stars.fill")
             }
             .font(.subheadline.weight(.medium))
             .foregroundStyle(.white.opacity(0.92))
-
-            HStack(spacing: 10) {
-                if accommodation.location.hasUsableLocation {
-                    Button {
+        } actions: {
+            if accommodation.location.hasUsableLocation {
+                TodayActionButton(symbol: "location.fill", accessibilityLabel: "Navigeer",
+                    accessibilityHint: "Opent de route naar \(accommodation.name)", action: {
                         Task { await AppleMapsNavigator().open(accommodation.location, name: accommodation.name) }
-                    } label: {
-                        Label("Navigeer", systemImage: "arrow.triangle.turn.up.right.diamond.fill")
-                            .frame(maxWidth: .infinity)
-                    }
-                    .buttonStyle(TravelCardButtonStyle())
-                }
-
-                if let detailsURL = accommodation.websiteURL ?? accommodation.bookingURL {
-                    Button {
-                        openURL(detailsURL)
-                    } label: {
-                        Text("Hotel details")
-                            .frame(maxWidth: .infinity)
-                    }
-                    .buttonStyle(TravelCardButtonStyle())
-                }
-                NavigationLink { TripItemEditorView(kind: .accommodation, itemID: accommodation.id) } label: {
-                    Text("Details").frame(maxWidth: .infinity)
-                }.buttonStyle(TravelCardButtonStyle())
-                Button(action: coverAction) { Text("Omslag").frame(maxWidth: .infinity) }
-                    .buttonStyle(TravelCardButtonStyle())
+                    })
             }
+            TodayActionButton(symbol: "info.circle.fill", accessibilityLabel: "Bekijk details",
+                destination: AnyView(TripItemEditorView(kind: .accommodation, itemID: accommodation.id)))
+            TodayActionButton(symbol: "photo.fill", accessibilityLabel: "Wijzig omslag", action: coverAction)
         }
-        .padding(20)
-        .frame(minHeight: accommodation.presentationMedia == nil ? 0 : 220, alignment: .bottom)
-        .background {
-            RoundedRectangle(cornerRadius: 24).fill(Color.travelTeal)
-            if accommodation.presentationMedia != nil {
-                TripMediaImage(media: accommodation.presentationMedia).scaledToFill()
-                LinearGradient(colors: [.black.opacity(0.08), .black.opacity(0.78)],
-                               startPoint: .top, endPoint: .bottom)
-            }
-        }
-        .clipShape(RoundedRectangle(cornerRadius: 24))
-        .travelCardShadow()
-        .accessibilityElement(children: .contain)
     }
 
     private var dateRange: String {
@@ -216,25 +273,21 @@ struct FlightCard: View {
     var coverAction: () -> Void = {}
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 16) {
+        TodayHeroCard(kind: .flight, media: flight.presentationMedia, minimumHeight: 240) {
             HStack {
                 Label("Vlucht", systemImage: "airplane")
                     .font(.headline)
-                    .foregroundStyle(Color.travelCoral)
                 Spacer()
                 Text(AppFormatters.shortDate(in: timeZone).string(from: flight.date))
                     .font(.subheadline.weight(.semibold))
-                    .foregroundStyle(.secondary)
+                    .foregroundStyle(.white.opacity(0.82))
             }
-
-            Text("\(flight.airline) · \(flight.flightNumber)")
-                .font(.subheadline)
-                .foregroundStyle(.secondary)
+            Text("\(flight.airline) · \(flight.flightNumber)").font(.title3.bold())
 
             HStack(alignment: .center, spacing: 12) {
                 flightStop(time: flight.departureTime, airport: flight.originAirport, alignment: .leading)
                 Image(systemName: "arrow.right")
-                    .foregroundStyle(Color.travelTeal)
+                    .foregroundStyle(.white.opacity(0.8))
                     .accessibilityHidden(true)
                 flightStop(time: flight.arrivalDateTime(in: timeZone), airport: flight.destinationAirport, alignment: .trailing,
                     date: flight.arrivalDate)
@@ -244,7 +297,7 @@ struct FlightCard: View {
                                                               to: flight.arrivalDateTime(in: timeZone)) {
                 Label(duration, systemImage: "clock")
                     .font(.caption.weight(.semibold))
-                    .foregroundStyle(.secondary)
+                    .foregroundStyle(.white.opacity(0.82))
             }
 
             HStack(spacing: 14) {
@@ -256,30 +309,17 @@ struct FlightCard: View {
                 }
             }
             .font(.caption.weight(.medium))
-            .foregroundStyle(.secondary)
-
-            HStack(spacing: 10) {
-                NavigationLink { TripItemEditorView(kind: .flight, itemID: flight.id) } label: {
-                    Text("Details").frame(maxWidth: .infinity)
-                }.buttonStyle(TravelCardButtonStyle())
-                Button(action: coverAction) { Text("Omslag").frame(maxWidth: .infinity) }
-                    .buttonStyle(TravelCardButtonStyle())
+            .foregroundStyle(.white.opacity(0.82))
+        } actions: {
+            if let target = ManagedTripItem.flight(flight).navigationTarget, target.location.hasUsableLocation {
+                TodayActionButton(symbol: "location.fill", accessibilityLabel: "Navigeer", action: {
+                    Task { await AppleMapsNavigator().open(target.location, name: target.name) }
+                })
             }
+            TodayActionButton(symbol: "info.circle.fill", accessibilityLabel: "Bekijk details",
+                destination: AnyView(TripItemEditorView(kind: .flight, itemID: flight.id)))
+            TodayActionButton(symbol: "photo.fill", accessibilityLabel: "Wijzig omslag", action: coverAction)
         }
-        .padding(18)
-        .frame(minHeight: flight.presentationMedia == nil ? 0 : 210, alignment: .bottom)
-        .foregroundStyle(flight.presentationMedia == nil ? Color.primary : Color.white)
-        .background {
-            RoundedRectangle(cornerRadius: 20).fill(Color(uiColor: .systemBackground))
-            if flight.presentationMedia != nil {
-                Color.white
-                TripMediaImage(media: flight.presentationMedia).scaledToFit().padding(24)
-                LinearGradient(colors: [.black.opacity(0.05), .black.opacity(0.76)], startPoint: .top, endPoint: .bottom)
-            }
-        }
-        .clipShape(RoundedRectangle(cornerRadius: 20))
-        .travelCardShadow()
-        .accessibilityElement(children: .contain)
     }
 
     private func flightStop(time: Date, airport: String, alignment: HorizontalAlignment, date: Date? = nil) -> some View {
@@ -288,13 +328,13 @@ struct FlightCard: View {
                 .font(.title3.bold())
             Text(airport)
                 .font(.caption)
-                .foregroundStyle(.secondary)
+                .foregroundStyle(.white.opacity(0.82))
                 .lineLimit(2)
                 .multilineTextAlignment(alignment == .leading ? .leading : .trailing)
             if let date, !TripCalendar.calendar(in: timeZone).isDate(date, inSameDayAs: flight.date) {
                 Text(AppFormatters.shortDate(in: timeZone).string(from: date))
                     .font(.caption2)
-                    .foregroundStyle(.secondary)
+                    .foregroundStyle(.white.opacity(0.82))
             }
         }
         .frame(maxWidth: .infinity, alignment: alignment == .leading ? .leading : .trailing)
@@ -307,34 +347,108 @@ struct ActivityHeroCard: View {
     let coverAction: () -> Void
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 10) {
-            Spacer(minLength: 80)
+        TodayHeroCard(kind: .activity, media: activity.presentationMedia, minimumHeight: 200) {
             Text(activity.title).font(.title3.bold())
             if let place = activity.location?.placeName?.nilIfBlank { Text(place).font(.subheadline) }
             Text(timeRange).font(.subheadline.monospacedDigit().weight(.semibold))
-            HStack(spacing: 10) {
-                NavigationLink { ActivityDetailView(activityID: activity.id) } label: {
-                    Text("Details").frame(maxWidth: .infinity)
-                }.buttonStyle(TravelCardButtonStyle())
-                Button(action: coverAction) { Text("Omslag").frame(maxWidth: .infinity) }
-                    .buttonStyle(TravelCardButtonStyle())
+        } actions: {
+            if let target = ManagedTripItem.activity(activity).navigationTarget, target.location.hasUsableLocation {
+                TodayActionButton(symbol: "location.fill", accessibilityLabel: "Navigeer", action: {
+                    Task { await AppleMapsNavigator().open(target.location, name: target.name) }
+                })
             }
+            TodayActionButton(symbol: "info.circle.fill", accessibilityLabel: "Bekijk details",
+                destination: AnyView(TripItemEditorView(kind: .activity, itemID: activity.id)))
+            TodayActionButton(symbol: "photo.fill", accessibilityLabel: "Wijzig omslag", action: coverAction)
         }
-        .foregroundStyle(.white)
-        .padding(18)
-        .frame(minHeight: 200, alignment: .bottomLeading)
-        .background {
-            TripMediaImage(media: activity.presentationMedia).scaledToFill()
-            LinearGradient(colors: [.black.opacity(0.05), .black.opacity(0.82)], startPoint: .top, endPoint: .bottom)
-        }
-        .clipShape(RoundedRectangle(cornerRadius: 20))
-        .travelCardShadow()
     }
 
     private var timeRange: String {
         let formatter = AppFormatters.time(in: timeZone)
         guard let end = activity.endTime else { return formatter.string(from: activity.startTime) }
         return "\(formatter.string(from: activity.startTime)) – \(formatter.string(from: end))"
+    }
+}
+
+struct TodayTransportCard: View {
+    let item: ManagedTripItem
+    let timeZone: TimeZone
+    let coverAction: () -> Void
+
+    var body: some View {
+        TodayHeroCard(kind: item.kind, media: item.presentationMedia, minimumHeight: 220) {
+            Label(item.kind.title, systemImage: item.kind.symbolName).font(.headline)
+            if !operatorName.isEmpty { Text(operatorName).font(.title3.bold()) }
+            HStack(spacing: 12) {
+                stop(time: departureTime, name: origin, alignment: .leading)
+                Image(systemName: "arrow.right").foregroundStyle(.white.opacity(0.8))
+                stop(time: arrivalTime, name: destination, alignment: .trailing)
+            }
+            if let duration = durationText { Label(duration, systemImage: "clock").font(.caption.weight(.semibold)) }
+        } actions: {
+            if let target = item.navigationTarget, target.location.hasUsableLocation {
+                TodayActionButton(symbol: "location.fill", accessibilityLabel: "Navigeer", action: {
+                    Task { await AppleMapsNavigator().open(target.location, name: target.name) }
+                })
+            }
+            TodayActionButton(symbol: "info.circle.fill", accessibilityLabel: "Bekijk details",
+                destination: AnyView(TripItemEditorView(kind: item.kind, itemID: item.id)))
+            TodayActionButton(symbol: "photo.fill", accessibilityLabel: "Wijzig omslag", action: coverAction)
+        }
+    }
+
+    private var operatorName: String {
+        switch item {
+        case .transfer(let value): value.provider
+        case .ferry(let value): value.operatorName
+        case .train(let value): [value.operatorName, value.trainNumber].filter { !$0.isEmpty }.joined(separator: " · ")
+        case .rentalVehicle(let value): value.company ?? value.vehicleType.title
+        default: ""
+        }
+    }
+    private var origin: String { switch item { case .transfer(let x): x.origin; case .ferry(let x): x.departureLocation; case .train(let x): x.originStation; case .rentalVehicle(let x): x.pickupLocation; default: "" } }
+    private var destination: String { switch item { case .transfer(let x): x.destination; case .ferry(let x): x.arrivalLocation; case .train(let x): x.destinationStation; case .rentalVehicle(let x): x.dropoffLocation ?? "—"; default: "" } }
+    private var departureTime: Date? { switch item { case .transfer(let x): x.startTime; case .ferry(let x): x.departureTime; case .train(let x): x.departureTime; case .rentalVehicle(let x): x.pickupTime; default: nil } }
+    private var arrivalTime: Date? { switch item { case .transfer(let x): x.endTime; case .ferry(let x): x.arrivalTime; case .train(let x): x.arrivalTime; case .rentalVehicle(let x): x.dropoffTime; default: nil } }
+    private var durationText: String? { guard let departureTime, let arrivalTime else { return nil }; return TravelDurationFormatter.string(from: departureTime, to: arrivalTime) }
+
+    private func stop(time: Date?, name: String, alignment: HorizontalAlignment) -> some View {
+        VStack(alignment: alignment, spacing: 4) {
+            Text(time.map(AppFormatters.time(in: timeZone).string) ?? "—").font(.title3.bold())
+            Text(name).font(.caption).foregroundStyle(.white.opacity(0.82)).lineLimit(2)
+                .multilineTextAlignment(alignment == .leading ? .leading : .trailing)
+        }.frame(maxWidth: .infinity, alignment: alignment == .leading ? .leading : .trailing)
+    }
+}
+
+struct TodayPlanningCard: View {
+    let item: ManagedTripItem
+    let timeZone: TimeZone
+    let coverAction: () -> Void
+
+    var body: some View {
+        TodayHeroCard(kind: item.kind, media: item.presentationMedia, minimumHeight: 184) {
+            Label(item.kind.title, systemImage: item.kind.symbolName).font(.caption.bold())
+            Text(title).font(.title3.bold())
+            if let time { Text(time).font(.subheadline.monospacedDigit().weight(.semibold)) }
+            if let location { Label(location, systemImage: "mappin").font(.subheadline).lineLimit(2) }
+        } actions: {
+            if let target = item.navigationTarget, target.location.hasUsableLocation {
+                TodayActionButton(symbol: "location.fill", accessibilityLabel: "Navigeer", action: {
+                    Task { await AppleMapsNavigator().open(target.location, name: target.name) }
+                })
+            }
+            TodayActionButton(symbol: "info.circle.fill", accessibilityLabel: "Bekijk details",
+                destination: AnyView(TripItemEditorView(kind: item.kind, itemID: item.id)))
+            TodayActionButton(symbol: "photo.fill", accessibilityLabel: "Wijzig omslag", action: coverAction)
+        }
+    }
+
+    private var title: String { switch item { case .restaurant(let x): x.name; case .activity(let x): x.title; case .other(let x): x.title; default: item.kind.title } }
+    private var location: String? { switch item { case .restaurant(let x): x.address; case .activity(let x): x.location?.placeName; case .other(let x): x.location; default: nil } }
+    private var time: String? {
+        let formatter = AppFormatters.time(in: timeZone)
+        switch item { case .restaurant(let x): return formatter.string(from: x.time); case .activity(let x): return formatter.string(from: x.startTime); case .other(let x): return x.startTime.map(formatter.string); default: return nil }
     }
 }
 

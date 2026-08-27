@@ -1839,6 +1839,93 @@ struct ThailandHolidayAppTests {
         #expect(fixture.store.trips.filter { $0.id == trip.id }.count == 1)
     }
 
+    @Test func allTodayItemKindsSupportSeparatePresentationMedia() throws {
+        var trip = try repository.currentTrip()
+        let day = trip.startDate
+        let document = TripMedia(filename: "ticket.png", sourceName: "Document")
+        let cover = TripMedia(filename: "cover.jpg", sourceName: "Eigen foto", presentationStyle: .photo)
+        trip.transfers = [Transfer(id: UUID(), date: day, startTime: day, endTime: nil, type: .taxi,
+            provider: "Taxi", origin: "Bangkok", destination: "Hotel", bookingReference: nil,
+            notes: nil, url: nil, attachmentFilename: "ticket.png", media: [document], presentationMedia: cover)]
+        trip.ferries = [Ferry(id: UUID(), date: day, operatorName: "Lomprayah", departureLocation: "Samui",
+            arrivalLocation: "Tao", departureTime: day, arrivalTime: nil, bookingReference: nil,
+            notes: nil, url: nil, attachmentFilename: nil, media: [], presentationMedia: cover)]
+        trip.trains = [TrainTrip(id: UUID(), date: day, operatorName: "NS International", trainNumber: "", originStation: "Amsterdam",
+            destinationStation: "Parijs", departureTime: day, arrivalTime: nil, carriage: nil, seat: nil,
+            notes: nil, url: nil, attachmentFilename: nil, bookingReference: nil, media: [], presentationMedia: cover)]
+        trip.restaurants = [RestaurantReservation(id: UUID(), date: day, time: day, name: "Restaurant", address: "Bangkok",
+            latitude: nil, longitude: nil, reservationName: nil, reservationReference: nil, notes: nil, url: nil,
+            attachmentFilename: nil, media: [], presentationMedia: cover, googlePlaceID: "place-id")]
+        trip.otherItems = [TripEvent(id: UUID(), date: day, startTime: day, endTime: nil, title: "Overig", location: "Bangkok",
+            notes: nil, url: nil, attachmentFilename: nil, media: [], presentationMedia: cover)]
+
+        let items: [ManagedTripItem] = [.transfer(trip.transfers[0]), .ferry(trip.ferries[0]), .train(trip.trains[0]),
+            .restaurant(trip.restaurants[0]), .other(trip.otherItems[0])]
+        #expect(items.allSatisfy { $0.presentationMedia == cover })
+        #expect(items[0].mediaItems == [document])
+        #expect(items[0].replacingPresentationMedia(nil).mediaItems == [document])
+        #expect(items.allSatisfy { $0.kind.supportsMedia })
+    }
+
+    @Test @MainActor func allExistingTransportAndPlanningTypesAppearOnSelectedTodayDate() throws {
+        let fixture = try makeTemporaryStore()
+        defer { try? FileManager.default.removeItem(at: fixture.directory) }
+        var trip = try #require(fixture.store.trip)
+        let day = trip.startDate
+        trip.transfers = [Transfer(id: UUID(), date: day, startTime: day, endTime: nil, type: .taxi, provider: "Taxi", origin: "A", destination: "B", bookingReference: nil, notes: nil, url: nil, attachmentFilename: nil)]
+        trip.ferries = [Ferry(id: UUID(), date: day, operatorName: "Ferry", departureLocation: "A", arrivalLocation: "B", departureTime: day, arrivalTime: nil, bookingReference: nil, notes: nil, url: nil, attachmentFilename: nil)]
+        trip.trains = [TrainTrip(id: UUID(), date: day, operatorName: "Train", trainNumber: "1", originStation: "A", destinationStation: "B", departureTime: day, arrivalTime: nil, carriage: nil, seat: nil, notes: nil, url: nil, attachmentFilename: nil)]
+        trip.restaurants = [RestaurantReservation(id: UUID(), date: day, time: day, name: "Food", address: nil, latitude: nil, longitude: nil, reservationName: nil, reservationReference: nil, notes: nil, url: nil, attachmentFilename: nil)]
+        trip.otherItems = [TripEvent(id: UUID(), date: day, startTime: nil, endTime: nil, title: "Other", location: nil, notes: nil, url: nil, attachmentFilename: nil)]
+        for item in trip.transfers.map(ManagedTripItem.transfer) + trip.ferries.map(ManagedTripItem.ferry)
+            + trip.trains.map(ManagedTripItem.train) + trip.restaurants.map(ManagedTripItem.restaurant)
+            + trip.otherItems.map(ManagedTripItem.other) { #expect(fixture.store.saveManagedItem(item)) }
+        #expect(fixture.store.transfers(on: day).count == 1)
+        #expect(fixture.store.ferries(on: day).count == 1)
+        #expect(fixture.store.trains(on: day).count == 1)
+        #expect(fixture.store.restaurants(on: day).count == 1)
+        #expect(fixture.store.otherItems(on: day).count == 1)
+    }
+
+    @Test func oldMediaJSONDefaultsToPhotographicPresentation() throws {
+        let json = #"{"id":"00000000-0000-0000-0000-000000000001","isCover":false,"mediaType":"image"}"#.data(using: .utf8)!
+        let decoded = try JSONDecoder().decode(TripMedia.self, from: json)
+        #expect(decoded.presentationStyle == nil)
+    }
+
+    @Test @MainActor func archiveRoundTripPreservesNewCoverTypesDocumentsAndPlaceIDs() throws {
+        var trip = try repository.currentTrip()
+        let root = temporaryDirectory(named: "NewCoverArchive")
+        defer { try? FileManager.default.removeItem(at: root) }
+        let sourceStore = AttachmentStore(documentsDirectory: root.appendingPathComponent("Source", isDirectory: true))
+        let coverFilename = try sourceStore.saveImageData(testImageData(color: .systemOrange))
+        let documentFilename = try sourceStore.saveImageData(testImageData(color: .systemBlue))
+        let cover = TripMedia(filename: coverFilename, sourceName: "Eigen foto", presentationStyle: .photo)
+        let document = TripMedia(filename: documentFilename, sourceName: "Document")
+        let day = trip.startDate
+        trip.trains = [TrainTrip(id: UUID(), date: day, operatorName: "Train", trainNumber: "1", originStation: "A", destinationStation: "B", departureTime: day, arrivalTime: nil, carriage: nil, seat: nil, notes: nil, url: nil, attachmentFilename: documentFilename, bookingReference: nil, media: [document], presentationMedia: cover)]
+        trip.ferries = [Ferry(id: UUID(), date: day, operatorName: "Ferry", departureLocation: "A", arrivalLocation: "B", departureTime: day, arrivalTime: nil, bookingReference: nil, notes: nil, url: nil, attachmentFilename: nil, media: [], presentationMedia: cover)]
+        trip.restaurants = [RestaurantReservation(id: UUID(), date: day, time: day, name: "Food", address: "Bangkok", latitude: nil, longitude: nil, reservationName: nil, reservationReference: nil, notes: nil, url: nil, attachmentFilename: nil, media: [], presentationMedia: cover, googlePlaceID: "place-restaurant")]
+        trip.otherItems = [TripEvent(id: UUID(), date: day, startTime: nil, endTime: nil, title: "Other", location: "Bangkok", notes: nil, url: nil, attachmentFilename: nil, media: [], presentationMedia: cover)]
+        trip.activities[0].presentationMedia = cover
+
+        let archive = try TripArchiveService().export(trip: trip, attachmentStore: sourceStore, destinationDirectory: root)
+        let preview = try TripArchiveService().preview(url: archive)
+        let destinationStore = AttachmentStore(documentsDirectory: root.appendingPathComponent("Destination", isDirectory: true))
+        let imported = try TripArchiveService().importedTrip(from: preview, attachmentStore: destinationStore)
+        let covers = [imported.trains.first?.presentationMedia, imported.ferries.first?.presentationMedia,
+            imported.restaurants.first?.presentationMedia, imported.activities.first?.presentationMedia,
+            imported.otherItems.first?.presentationMedia].compactMap { $0 }
+        #expect(covers.count == 5)
+        #expect(covers.allSatisfy { $0.presentationStyle == .photo })
+        #expect(covers.allSatisfy { media in
+            guard let filename = media.filename else { return false }
+            return FileManager.default.fileExists(atPath: destinationStore.imageURL(for: filename).path)
+        })
+        #expect(imported.trains.first?.mediaItems.first?.filename != nil)
+        #expect(imported.restaurants.first?.googlePlaceID == "place-restaurant")
+    }
+
     @MainActor
     private func makeTemporaryStore() throws -> (store: TripStore, directory: URL) {
         let directory = FileManager.default.temporaryDirectory

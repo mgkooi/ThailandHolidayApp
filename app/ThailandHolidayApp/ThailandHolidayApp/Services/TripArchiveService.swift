@@ -186,12 +186,12 @@ struct TripArchiveService {
             trip.activities[index].media = media(old.media)
             trip.activities[index].presentationMedia = presentation(old.presentationMedia)
         }
-        for index in trip.transfers.indices { trip.transfers[index].attachmentFilename = mapped(trip.transfers[index].attachmentFilename) }
-        for index in trip.ferries.indices { trip.ferries[index].attachmentFilename = mapped(trip.ferries[index].attachmentFilename) }
-        for index in trip.trains.indices { trip.trains[index].attachmentFilename = mapped(trip.trains[index].attachmentFilename) }
-        for index in trip.restaurants.indices { trip.restaurants[index].attachmentFilename = mapped(trip.restaurants[index].attachmentFilename) }
-        for index in trip.rentalVehicles.indices { trip.rentalVehicles[index].attachmentFilename = mapped(trip.rentalVehicles[index].attachmentFilename) }
-        for index in trip.otherItems.indices { trip.otherItems[index].attachmentFilename = mapped(trip.otherItems[index].attachmentFilename) }
+        for index in trip.transfers.indices { trip.transfers[index].attachmentFilename = mapped(trip.transfers[index].attachmentFilename); trip.transfers[index].media = media(trip.transfers[index].media); trip.transfers[index].presentationMedia = presentation(trip.transfers[index].presentationMedia) }
+        for index in trip.ferries.indices { trip.ferries[index].attachmentFilename = mapped(trip.ferries[index].attachmentFilename); trip.ferries[index].media = media(trip.ferries[index].media); trip.ferries[index].presentationMedia = presentation(trip.ferries[index].presentationMedia) }
+        for index in trip.trains.indices { trip.trains[index].attachmentFilename = mapped(trip.trains[index].attachmentFilename); trip.trains[index].media = media(trip.trains[index].media); trip.trains[index].presentationMedia = presentation(trip.trains[index].presentationMedia) }
+        for index in trip.restaurants.indices { trip.restaurants[index].attachmentFilename = mapped(trip.restaurants[index].attachmentFilename); trip.restaurants[index].media = media(trip.restaurants[index].media); trip.restaurants[index].presentationMedia = presentation(trip.restaurants[index].presentationMedia) }
+        for index in trip.rentalVehicles.indices { trip.rentalVehicles[index].attachmentFilename = mapped(trip.rentalVehicles[index].attachmentFilename); trip.rentalVehicles[index].media = media(trip.rentalVehicles[index].media); trip.rentalVehicles[index].presentationMedia = presentation(trip.rentalVehicles[index].presentationMedia) }
+        for index in trip.otherItems.indices { trip.otherItems[index].attachmentFilename = mapped(trip.otherItems[index].attachmentFilename); trip.otherItems[index].media = media(trip.otherItems[index].media); trip.otherItems[index].presentationMedia = presentation(trip.otherItems[index].presentationMedia) }
         return trip
     }
 }

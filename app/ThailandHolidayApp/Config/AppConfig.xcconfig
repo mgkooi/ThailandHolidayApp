@@ -1,0 +1,7 @@
+// Safe defaults keep clean checkouts buildable without local credentials.
+BRAVE_SEARCH_API_KEY =
+UNSPLASH_ACCESS_KEY =
+GOOGLE_PLACES_API_KEY =
+
+// Local overrides are intentionally ignored by Git.
+#include? "Secrets.xcconfig"

@@ -4,6 +4,11 @@ import OSLog
 import SwiftUI
 import UIKit
 
+private struct DocumentViewerItem: Identifiable {
+    let id = UUID()
+    let image: UIImage
+}
+
 struct TripItemEditorView: View {
     @Environment(TripStore.self) private var tripStore
     @Environment(AppFeedbackState.self) private var feedbackState
@@ -33,6 +38,7 @@ struct TripItemEditorView: View {
     @State private var showsMediaSearch = false
     @State private var showsCamera = false
     @State private var showsCoverEditor = false
+    @State private var documentViewer: DocumentViewerItem?
 
     init(kind: TripItemKind, itemID: UUID? = nil, extraction: BookingExtractionResult? = nil,
          scannedImageData: Data? = nil, mapPlace: MapPlace? = nil, targetTripID: UUID? = nil) {
@@ -84,6 +90,7 @@ struct TripItemEditorView: View {
         .sheet(isPresented: $showsCoverEditor) {
             if let itemID { CoverEditorView(itemID: itemID, kind: kind) }
         }
+        .fullScreenCover(item: $documentViewer) { ZoomableMediaViewer(image: $0.image) }
         .alert("Deze locatie lijkt al in deze reis te staan.", isPresented: $confirmsMapDuplicate) {
             Button("Bekijk bestaande") { dismiss() }
             Button("Toch toevoegen") { mapDuplicateAcknowledged=true; Task { await save() } }
@@ -157,7 +164,13 @@ struct TripItemEditorView: View {
 
             Section(kind.supportsMedia ? "Documenten" : "Boekingsbewijs") {
                 if let image = previewImage(draft) {
-                    Image(uiImage: image).resizable().scaledToFit().clipShape(RoundedRectangle(cornerRadius: 14))
+                    Button { documentViewer = DocumentViewerItem(image: originalDocumentImage(draft) ?? image) } label: {
+                        Image(uiImage: image).resizable().scaledToFit().clipShape(RoundedRectangle(cornerRadius: 14))
+                    }
+                    .buttonStyle(.plain)
+                    .accessibilityLabel("Open document")
+                    .accessibilityHint("Opent het document schermvullend; knijp of dubbeltik om in te zoomen")
+                    .accessibilityIdentifier("documentThumbnail")
                 }
                 PhotosPicker(selection: $photoItem, matching: .images) {
                     Label(hasAttachment(draft) ? "Vervang foto" : "Foto toevoegen", systemImage: "photo")
@@ -184,6 +197,13 @@ struct TripItemEditorView: View {
             }
         }
         .environment(\.timeZone, trip.timeZone)
+    }
+
+    private func originalDocumentImage(_ draft: TripItemDraft) -> UIImage? {
+        if let data = draft.replacementImageData { return UIImage(data: data) }
+        guard let filename = draft.originalAttachment,
+              let url = tripStore.attachmentURL(for: filename) else { return nil }
+        return UIImage(contentsOfFile: url.path)
     }
 
     private func mediaQuery(draft: TripItemDraft, trip: Trip) -> String {
@@ -490,7 +510,7 @@ final class TripItemDraft {
         case .ferry(let x): date=x.date; startTime=x.departureTime; endTime=x.arrivalTime ?? x.departureTime; secondaryDate=x.arrivalTime ?? x.date; a=x.operatorName; b=x.departureLocation; c=x.arrivalLocation; d=x.bookingReference ?? ""; notes=x.notes ?? ""; urlString=x.url?.absoluteString ?? ""
         case .train(let x): date=x.date; startTime=x.departureTime; endTime=x.arrivalTime ?? x.departureTime; secondaryDate=x.arrivalTime ?? x.date; a=x.operatorName; b=x.trainNumber; c=x.originStation; d=x.destinationStation; e=x.carriage ?? ""; f=x.seat ?? ""; g=x.bookingReference ?? ""; notes=x.notes ?? ""; urlString=x.url?.absoluteString ?? ""
         case .rentalVehicle(let x): rentalVehicleType=x.vehicleType; date=x.pickupDate; secondaryDate=x.dropoffDate ?? x.pickupDate; startTime=x.pickupTime ?? x.pickupDate; endTime=x.dropoffTime ?? x.dropoffDate ?? x.pickupDate; a=x.company ?? ""; b=x.pickupLocation; c=x.dropoffLocation ?? ""; d=x.vehicleDescription ?? ""; e=x.bookingReference ?? ""; f=x.renterName ?? ""; notes=x.notes ?? ""; urlString=x.url?.absoluteString ?? ""
-        case .restaurant(let x): date=x.date; startTime=x.time; endTime=x.time; a=x.name; b=x.address ?? ""; c=x.reservationName ?? ""; d=x.reservationReference ?? ""; e=x.latitude.map { String($0) } ?? ""; f=x.longitude.map { String($0) } ?? ""; notes=x.notes ?? ""; urlString=x.url?.absoluteString ?? ""
+        case .restaurant(let x): date=x.date; startTime=x.time; endTime=x.time; a=x.name; b=x.address ?? ""; c=x.reservationName ?? ""; d=x.reservationReference ?? ""; e=x.latitude.map { String($0) } ?? ""; f=x.longitude.map { String($0) } ?? ""; notes=x.notes ?? ""; urlString=x.url?.absoluteString ?? ""; googlePlaceID=x.googlePlaceID
         case .activity(let x): date=x.date; startTime=x.startTime; endTime=x.endTime ?? x.startTime; a=x.title; b=x.description ?? ""; c=x.location?.placeName ?? ""; locationAddress=x.location?.address ?? ""; d=x.latitude.map { String($0) } ?? ""; e=x.longitude.map { String($0) } ?? ""; g=x.bookingReference ?? ""; activityCategory=ItineraryCategory(rawValue:x.category) ?? .activity; notes=x.notes ?? ""; urlString=x.url?.absoluteString ?? ""; destinationID=x.destinationId; googlePlaceID=x.location?.googlePlaceID
         case .other(let x): date=x.date; startTime=x.startTime ?? x.date; endTime=x.endTime ?? x.startTime ?? x.date; a=x.title; b=x.location ?? ""; notes=x.notes ?? ""; urlString=x.url?.absoluteString ?? ""
         }
@@ -656,15 +676,15 @@ final class TripItemDraft {
                 departureAirport:departureAirport,arrivalAirport:arrivalAirport,bookingReference:g.nilIfBlank,
                 aircraft:e.nilIfBlank,cabin:f.nilIfBlank,notes:notes.nilIfBlank,bookingURL:url,attachmentFilename:originalAttachment,media:media,presentationMedia:presentationMedia))
         case .accommodation: return .accommodation(Accommodation(id:id,name:a,type:.hotel,destinationID:destinationID,placeName:f.nilIfBlank,checkIn:startTime,checkOut:endTime,address:c,latitude:Double(d),longitude:Double(e),roomDescription:b,bookingReference:g.nilIfBlank,websiteURL:nil,bookingURL:url,phoneNumber:nil,notes:notes.nilIfBlank,attachmentFilename:originalAttachment,media:media,presentationMedia:presentationMedia,googlePlaceID:googlePlaceID))
-        case .transfer: return .transfer(Transfer(id:id,date:day,startTime:start,endTime:end,type:transferType,provider:a,origin:b,destination:c,bookingReference:d.nilIfBlank,notes:notes.nilIfBlank,url:url,attachmentFilename:originalAttachment))
-        case .ferry: return .ferry(Ferry(id:id,date:day,operatorName:a,departureLocation:b,arrivalLocation:c,departureTime:start,arrivalTime:end,bookingReference:d.nilIfBlank,notes:notes.nilIfBlank,url:url,attachmentFilename:originalAttachment))
-        case .train: return .train(TrainTrip(id:id,date:day,operatorName:a,trainNumber:b,originStation:c,destinationStation:d,departureTime:start,arrivalTime:end,carriage:e.nilIfBlank,seat:f.nilIfBlank,notes:notes.nilIfBlank,url:url,attachmentFilename:originalAttachment,bookingReference:g.nilIfBlank))
+        case .transfer: return .transfer(Transfer(id:id,date:day,startTime:start,endTime:end,type:transferType,provider:a,origin:b,destination:c,bookingReference:d.nilIfBlank,notes:notes.nilIfBlank,url:url,attachmentFilename:originalAttachment,media:media,presentationMedia:presentationMedia))
+        case .ferry: return .ferry(Ferry(id:id,date:day,operatorName:a,departureLocation:b,arrivalLocation:c,departureTime:start,arrivalTime:end,bookingReference:d.nilIfBlank,notes:notes.nilIfBlank,url:url,attachmentFilename:originalAttachment,media:media,presentationMedia:presentationMedia))
+        case .train: return .train(TrainTrip(id:id,date:day,operatorName:a,trainNumber:b,originStation:c,destinationStation:d,departureTime:start,arrivalTime:end,carriage:e.nilIfBlank,seat:f.nilIfBlank,notes:notes.nilIfBlank,url:url,attachmentFilename:originalAttachment,bookingReference:g.nilIfBlank,media:media,presentationMedia:presentationMedia))
         case .rentalVehicle:
             let dropoffDay = calendar.startOfDay(for: secondaryDate)
-            return .rentalVehicle(RentalVehicleBooking(id:id,vehicleType:rentalVehicleType,company:a.nilIfBlank,pickupDate:day,pickupTime:start,pickupLocation:b,dropoffDate:dropoffDay,dropoffTime:calendar.combining(day:dropoffDay,time:endTime),dropoffLocation:c.nilIfBlank,vehicleDescription:d.nilIfBlank,bookingReference:e.nilIfBlank,renterName:f.nilIfBlank,notes:notes.nilIfBlank,url:url,attachmentFilename:originalAttachment))
-        case .restaurant: return .restaurant(RestaurantReservation(id:id,date:day,time:start,name:a,address:b.nilIfBlank,latitude:Double(e),longitude:Double(f),reservationName:c.nilIfBlank,reservationReference:d.nilIfBlank,notes:notes.nilIfBlank,url:url,attachmentFilename:originalAttachment))
+            return .rentalVehicle(RentalVehicleBooking(id:id,vehicleType:rentalVehicleType,company:a.nilIfBlank,pickupDate:day,pickupTime:start,pickupLocation:b,dropoffDate:dropoffDay,dropoffTime:calendar.combining(day:dropoffDay,time:endTime),dropoffLocation:c.nilIfBlank,vehicleDescription:d.nilIfBlank,bookingReference:e.nilIfBlank,renterName:f.nilIfBlank,notes:notes.nilIfBlank,url:url,attachmentFilename:originalAttachment,media:media,presentationMedia:presentationMedia))
+        case .restaurant: return .restaurant(RestaurantReservation(id:id,date:day,time:start,name:a,address:b.nilIfBlank,latitude:Double(e),longitude:Double(f),reservationName:c.nilIfBlank,reservationReference:d.nilIfBlank,notes:notes.nilIfBlank,url:url,attachmentFilename:originalAttachment,media:media,presentationMedia:presentationMedia,googlePlaceID:googlePlaceID))
         case .activity: return .activity(Activity(id:id,destinationId:destinationID,date:day,startTime:start,endTime:end,title:a,category:activityCategory.rawValue,description:b.nilIfBlank,location:TripLocation(placeName:c.nilIfBlank,address:locationAddress.nilIfBlank,latitude:Double(d),longitude:Double(e),googlePlaceID:googlePlaceID),latitude:Double(d),longitude:Double(e),websiteURL:nil,bookingURL:nil,notes:notes.nilIfBlank,url:url,attachmentFilename:originalAttachment,isFavorite:false,isCompleted:false,bookingReference:g.nilIfBlank,media:media,presentationMedia:presentationMedia))
-        case .other: return .other(TripEvent(id:id,date:day,startTime:start,endTime:end,title:a,location:b.nilIfBlank,notes:notes.nilIfBlank,url:url,attachmentFilename:originalAttachment))
+        case .other: return .other(TripEvent(id:id,date:day,startTime:start,endTime:end,title:a,location:b.nilIfBlank,notes:notes.nilIfBlank,url:url,attachmentFilename:originalAttachment,media:media,presentationMedia:presentationMedia))
         }
     }
 }

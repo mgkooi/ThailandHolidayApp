@@ -95,6 +95,27 @@ final class ThailandHolidayAppUITests: XCTestCase {
     }
 
     @MainActor
+    func testTodayHeroUsesAccessibleIconOnlyActions() throws {
+        let app = launchIsolatedApp()
+        app.tabBars.buttons["Reis"].tap()
+        app.buttons["Nieuw reisitem"].tap()
+        app.staticTexts["Accommodatie"].tap()
+        let name = app.textFields["Naam"]
+        XCTAssertTrue(name.waitForExistence(timeout: 5))
+        name.tap(); name.typeText("Icon Action Hotel")
+        let place = app.textFields["Plaats"]
+        place.tap(); place.typeText("Bangkok")
+        app.swipeUp(velocity: .fast)
+        XCTAssertTrue(app.buttons["Bewaar"].waitForExistence(timeout: 5))
+        app.buttons["Bewaar"].tap()
+        app.tabBars.buttons["Vandaag"].tap()
+        XCTAssertTrue(app.descendants(matching: .any)["todayHeroCard.accommodation"].waitForExistence(timeout: 8))
+        XCTAssertTrue(app.buttons["Bekijk details"].firstMatch.exists)
+        XCTAssertTrue(app.buttons["Wijzig omslag"].firstMatch.exists)
+        XCTAssertFalse(app.buttons["Hotel details"].exists)
+    }
+
+    @MainActor
     func testBookedLunchAndDinnerAppearImmediatelyInToday() throws {
         let app = launchIsolatedApp()
         app.tabBars.buttons["Reis"].tap()

@@ -65,8 +65,13 @@ struct TodayView: View {
         } ?? destination
         let weatherDestination = destination ?? accommodation.flatMap(weatherDestination(for:))
         let flights = tripStore.flights(on: selectedDate)
+        let transfers = tripStore.transfers(on: selectedDate)
+        let ferries = tripStore.ferries(on: selectedDate)
+        let trains = tripStore.trains(on: selectedDate)
+        let rentalVehicles = tripStore.rentalVehicles(on: selectedDate)
         let activities = tripStore.activities(on: selectedDate)
         let restaurants = tripStore.restaurants(on: selectedDate)
+        let otherItems = tripStore.otherItems(on: selectedDate)
 
         return ScrollView {
             LazyVStack(alignment: .leading, spacing: 24) {
@@ -91,7 +96,8 @@ struct TodayView: View {
                     )
 
                 } else {
-                    if activities.isEmpty && restaurants.isEmpty && accommodation == nil && flights.isEmpty {
+                    if activities.isEmpty && restaurants.isEmpty && otherItems.isEmpty && accommodation == nil
+                        && flights.isEmpty && transfers.isEmpty && ferries.isEmpty && trains.isEmpty && rentalVehicles.isEmpty {
                         ContentUnavailableView(
                             "Geen reisplanning voor deze dag",
                             systemImage: "sun.max",
@@ -110,15 +116,20 @@ struct TodayView: View {
 
                 QuickActionsView(accommodation: accommodation, hasFlights: !flights.isEmpty)
 
-                if !flights.isEmpty {
+                if !flights.isEmpty || !transfers.isEmpty || !ferries.isEmpty || !trains.isEmpty || !rentalVehicles.isEmpty {
                     sectionHeader("Volgende verplaatsing")
                     ForEach(flights) { flight in
                         FlightCard(flight: flight, timeZone: trip.timeZone,
                                    coverAction: { coverTarget = .flight(flight) })
                     }
+                    ForEach(transfers) { value in transportCard(.transfer(value), timeZone: trip.timeZone) }
+                    ForEach(trains) { value in transportCard(.train(value), timeZone: trip.timeZone) }
+                    ForEach(ferries) { value in transportCard(.ferry(value), timeZone: trip.timeZone) }
+                    ForEach(rentalVehicles) { value in transportCard(.rentalVehicle(value), timeZone: trip.timeZone) }
                 }
 
-                planningSection(activities: activities, restaurants: restaurants, timeZone: trip.timeZone)
+                planningSection(activities: activities, restaurants: restaurants, otherItems: otherItems,
+                                timeZone: trip.timeZone)
                 suggestionsSection()
             }
             .padding(.horizontal, 20)
@@ -195,11 +206,12 @@ struct TodayView: View {
         withAnimation(.easeInOut(duration: 0.22)) { selectedDate = date }
     }
 
-    private func planningSection(activities: [Activity], restaurants: [RestaurantReservation], timeZone: TimeZone) -> some View {
+    private func planningSection(activities: [Activity], restaurants: [RestaurantReservation],
+                                 otherItems: [TripEvent], timeZone: TimeZone) -> some View {
         VStack(alignment: .leading, spacing: 12) {
             sectionHeader("Planning vandaag")
 
-            if activities.isEmpty && restaurants.isEmpty {
+            if activities.isEmpty && restaurants.isEmpty && otherItems.isEmpty {
                 ContentUnavailableView(
                     "Geen activiteiten gepland",
                     systemImage: "calendar",
@@ -209,40 +221,21 @@ struct TodayView: View {
                 .padding(.vertical, 24)
                 .background(.background, in: RoundedRectangle(cornerRadius: 20))
             } else {
-                VStack(spacing: 0) {
-                    ForEach(Array(activities.enumerated()), id: \.element.id) { index, activity in
-                        if activity.presentationMedia != nil {
-                            ActivityHeroCard(activity: activity, timeZone: timeZone,
-                                             coverAction: { coverTarget = .activity(activity) })
-                                .padding(.vertical, 8)
-                        } else {
-                            NavigationLink {
-                                ActivityDetailView(activityID: activity.id)
-                            } label: {
-                            ActivityRow(
-                                activity: activity,
-                                timeZone: timeZone,
-                                isLast: index == activities.count - 1 && restaurants.isEmpty
-                            )
-                            }
-                            .buttonStyle(.plain)
-                        }
-                    }
-                    ForEach(Array(restaurants.enumerated()), id: \.element.id) { index, restaurant in
-                        NavigationLink {
-                            TripItemEditorView(kind: .restaurant, itemID: restaurant.id)
-                        } label: {
-                            TodayRestaurantRow(restaurant: restaurant, timeZone: timeZone,
-                                               isLast: index == restaurants.count - 1)
-                        }
-                        .buttonStyle(.plain)
-                    }
+                LazyVStack(spacing: 14) {
+                    ForEach(activities) { value in planningCard(.activity(value), timeZone: timeZone) }
+                    ForEach(restaurants) { value in planningCard(.restaurant(value), timeZone: timeZone) }
+                    ForEach(otherItems) { value in planningCard(.other(value), timeZone: timeZone) }
                 }
-                .padding(.horizontal, 16)
-                .background(.background, in: RoundedRectangle(cornerRadius: 20))
-                .travelCardShadow()
             }
         }
+    }
+
+    private func transportCard(_ item: ManagedTripItem, timeZone: TimeZone) -> some View {
+        TodayTransportCard(item: item, timeZone: timeZone, coverAction: { coverTarget = item })
+    }
+
+    private func planningCard(_ item: ManagedTripItem, timeZone: TimeZone) -> some View {
+        TodayPlanningCard(item: item, timeZone: timeZone, coverAction: { coverTarget = item })
     }
 
     private func suggestionsSection() -> some View {

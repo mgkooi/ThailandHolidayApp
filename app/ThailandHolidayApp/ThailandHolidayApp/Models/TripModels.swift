@@ -352,6 +352,8 @@ struct Transfer: Identifiable, Codable, Equatable {
     var notes: String?
     var url: URL?
     var attachmentFilename: String?
+    var media: [TripMedia]? = nil
+    var presentationMedia: TripMedia? = nil
 }
 
 struct Ferry: Identifiable, Codable, Equatable {
@@ -366,6 +368,8 @@ struct Ferry: Identifiable, Codable, Equatable {
     var notes: String?
     var url: URL?
     var attachmentFilename: String?
+    var media: [TripMedia]? = nil
+    var presentationMedia: TripMedia? = nil
 }
 
 struct TrainTrip: Identifiable, Codable, Equatable {
@@ -383,6 +387,8 @@ struct TrainTrip: Identifiable, Codable, Equatable {
     var url: URL?
     var attachmentFilename: String?
     var bookingReference: String? = nil
+    var media: [TripMedia]? = nil
+    var presentationMedia: TripMedia? = nil
 }
 
 struct RestaurantReservation: Identifiable, Codable, Equatable {
@@ -398,9 +404,13 @@ struct RestaurantReservation: Identifiable, Codable, Equatable {
     var notes: String?
     var url: URL?
     var attachmentFilename: String?
+    var media: [TripMedia]? = nil
+    var presentationMedia: TripMedia? = nil
+    var googlePlaceID: String? = nil
 
     var location: TripLocation {
-        TripLocation(placeName: name, address: address, latitude: latitude, longitude: longitude)
+        TripLocation(placeName: name, address: address, latitude: latitude, longitude: longitude,
+                     googlePlaceID: googlePlaceID)
     }
 }
 
@@ -414,6 +424,8 @@ struct TripEvent: Identifiable, Codable, Equatable {
     var notes: String?
     var url: URL?
     var attachmentFilename: String?
+    var media: [TripMedia]? = nil
+    var presentationMedia: TripMedia? = nil
 }
 
 enum RentalVehicleType: String, Codable, CaseIterable, Equatable {
@@ -458,6 +470,8 @@ struct RentalVehicleBooking: Identifiable, Codable, Equatable {
     var notes: String?
     var url: URL?
     var attachmentFilename: String?
+    var media: [TripMedia]? = nil
+    var presentationMedia: TripMedia? = nil
 }
 
 struct Activity: Identifiable, Codable, Equatable {
