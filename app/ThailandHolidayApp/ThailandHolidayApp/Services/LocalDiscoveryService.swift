@@ -278,7 +278,12 @@ struct UITestDiscoveryService: LocalDiscoverySearching {
                 websiteURL: URL(string: "https://example.com/\(category.rawValue)/\(index)"),
                 rating: 4.7 - Double(index) * 0.1, reviewCount: 1200 - index * 200,
                 priceLevel: category.isFood ? .moderate : nil, googlePlaceID: "ui-place-\(category.rawValue)-\(index)",
-                primaryType: category.rawValue, isOpenNow: index != 3, sourceProviders: ["UI Fixture"])
+                primaryType: category.rawValue, isOpenNow: index != 3,
+                previewPhoto: index < 2 ? DiscoveryPhotoMetadata(resourceName: "ui-test-photo", width: 1_600,
+                    height: 900, authors: [.init(displayName: "Testfotograaf",
+                        profileURL: URL(string: "https://example.com/author"), profilePhotoURL: nil)],
+                    googleMapsURL: URL(string: "https://maps.google.com/")) : nil,
+                sourceProviders: ["UI Fixture"])
         }
     }
 }

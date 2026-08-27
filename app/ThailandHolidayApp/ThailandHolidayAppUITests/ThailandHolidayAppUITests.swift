@@ -241,6 +241,35 @@ final class ThailandHolidayAppUITests: XCTestCase {
     }
 
     @MainActor
+    func testDiscoveryPhotoFallbackAttributionAndTransientAddToDay() throws {
+        let app = launchIsolatedApp()
+        app.tabBars.buttons["Ontdekken"].tap()
+        XCTAssertTrue(app.buttons["Restaurants"].waitForExistence(timeout: 8))
+        app.buttons["Restaurants"].tap()
+
+        let photo = app.descendants(matching: .any)["discoveryPhoto.ui-restaurant-0"]
+        XCTAssertTrue(photo.waitForExistence(timeout: 8))
+        app.staticTexts["Restaurants test 1"].tap()
+        XCTAssertTrue(app.descendants(matching: .any)["discoveryDetailPhoto"].waitForExistence(timeout: 5))
+        XCTAssertTrue(app.descendants(matching: .any)["discoveryPhotoAttribution"].exists)
+        XCTAssertTrue(app.descendants(matching: .any)["discoveryPhotoSource"].exists)
+
+        app.buttons["Voeg aan dag toe"].tap()
+        XCTAssertTrue(app.buttons["Voeg toe"].waitForExistence(timeout: 5))
+        app.buttons["Voeg toe"].tap()
+        XCTAssertTrue(app.buttons["Omslag kiezen"].waitForExistence(timeout: 5),
+                      "Een transient Google-preview mag niet automatisch een omslag worden")
+        app.buttons["Gereed"].tap()
+        app.buttons["Sluit"].tap()
+
+        let list = app.descendants(matching: .any)["discoveryResultList"]
+        list.swipeUp()
+        list.swipeUp()
+        XCTAssertTrue(app.descendants(matching: .any)["discoveryPhotoFallback.ui-restaurant-2"]
+            .waitForExistence(timeout: 5))
+    }
+
+    @MainActor
     func testDiscoverShowsEmptyStateForIncompatibleFilters() throws {
         let app = launchIsolatedApp(extraArguments: ["--ui-testing-empty-discovery"])
         app.tabBars.buttons["Ontdekken"].tap()

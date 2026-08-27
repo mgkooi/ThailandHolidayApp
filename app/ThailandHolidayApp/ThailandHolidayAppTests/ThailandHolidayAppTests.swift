@@ -1934,13 +1934,15 @@ struct ThailandHolidayAppTests {
         #expect(query.locationBias.circle.radius == 5_000)
         #expect(query.maxResultCount == 20)
         #expect(GooglePlacesDiscoveryProvider.fieldMask.contains("places.userRatingCount"))
-        #expect(!GooglePlacesDiscoveryProvider.fieldMask.contains("photos"))
+        #expect(GooglePlacesDiscoveryProvider.fieldMask.contains("places.photos.name"))
+        #expect(GooglePlacesDiscoveryProvider.fieldMask.contains("places.photos.authorAttributions"))
+        #expect(GooglePlacesDiscoveryProvider.fieldMask.contains("places.photos.googleMapsUri"))
     }
 
     @Test @MainActor func googlePlacesDiscoveryParsesMetadataComputesDistanceAndCaches() async throws {
         PlacesURLProtocolStub.requests = []
         PlacesURLProtocolStub.handler = { _ in (200, Data("""
-        {"places":[{"id":"place-1","displayName":{"text":"Khao Soi"},"formattedAddress":"Chiang Mai","location":{"latitude":18.791,"longitude":98.98},"primaryType":"restaurant","rating":4.7,"userRatingCount":3800,"priceLevel":"PRICE_LEVEL_INEXPENSIVE","currentOpeningHours":{"openNow":true},"websiteUri":"https://example.com"}]}
+        {"places":[{"id":"place-1","displayName":{"text":"Khao Soi"},"formattedAddress":"Chiang Mai","location":{"latitude":18.791,"longitude":98.98},"primaryType":"restaurant","rating":4.7,"userRatingCount":3800,"priceLevel":"PRICE_LEVEL_INEXPENSIVE","currentOpeningHours":{"openNow":true},"websiteUri":"https://example.com","photos":[{"name":"places/place-1/photos/portrait","widthPx":900,"heightPx":1600,"authorAttributions":[]},{"name":"places/place-1/photos/landscape","widthPx":1600,"heightPx":900,"authorAttributions":[{"displayName":"Mae Photographer","uri":"https://example.com/mae","photoUri":"https://example.com/avatar.jpg"}],"googleMapsUri":"https://maps.google.com/photo-source"}]}]}
         """.utf8)) }
         let configuration = URLSessionConfiguration.ephemeral
         configuration.protocolClasses = [PlacesURLProtocolStub.self]
@@ -1955,8 +1957,72 @@ struct ThailandHolidayAppTests {
         #expect(first.first?.reviewCount == 3_800)
         #expect(first.first?.priceLevel == .inexpensive)
         #expect(first.first?.isOpenNow == true)
+        #expect(first.first?.previewPhoto?.resourceName == "places/place-1/photos/landscape")
+        #expect(first.first?.previewPhoto?.width == 1_600)
+        #expect(first.first?.previewPhoto?.authors.first?.displayName == "Mae Photographer")
+        #expect(first.first?.previewPhoto?.authors.first?.profileURL == URL(string: "https://example.com/mae"))
+        #expect(first.first?.previewPhoto?.googleMapsURL == URL(string: "https://maps.google.com/photo-source"))
         #expect((first.first?.distanceMeters ?? 10_000) < 200)
         #expect(PlacesURLProtocolStub.requests.first?.value(forHTTPHeaderField: "X-Goog-FieldMask") == GooglePlacesDiscoveryProvider.fieldMask)
+    }
+
+    @Test @MainActor func googlePlacesDiscoveryHandlesMissingPhotoMetadata() async throws {
+        PlacesURLProtocolStub.requests = []
+        PlacesURLProtocolStub.handler = { _ in (200, Data("""
+        {"places":[{"id":"place-without-photo","displayName":{"text":"No Photo Cafe"},"location":{"latitude":18.79,"longitude":98.98}}]}
+        """.utf8)) }
+        let configuration = URLSessionConfiguration.ephemeral
+        configuration.protocolClasses = [PlacesURLProtocolStub.self]
+        let provider = GooglePlacesDiscoveryProvider(configuration: .init(
+            googlePlacesAPIKey: "test", braveSearchAPIKey: nil, unsplashAccessKey: nil),
+            session: URLSession(configuration: configuration))
+        let results = try await provider.search(around: .init(name: "Chiang Mai", latitude: 18.79,
+            longitude: 98.98), category: .cafe, radiusMeters: 5_000)
+        #expect(results.first?.previewPhoto == nil)
+    }
+
+    @Test func googlePhotoLoaderIsLazyBoundedAndUsesEphemeralRequest() async throws {
+        PlacesURLProtocolStub.requests = []
+        PlacesURLProtocolStub.handler = { _ in (200, Data([0x01, 0x02, 0x03])) }
+        let sessionConfiguration = URLSessionConfiguration.ephemeral
+        sessionConfiguration.protocolClasses = [PlacesURLProtocolStub.self]
+        sessionConfiguration.urlCache = nil
+        let loader = GooglePlacesPhotoLoader(configuration: .init(
+            googlePlacesAPIKey: "test", braveSearchAPIKey: nil, unsplashAccessKey: nil),
+            session: URLSession(configuration: sessionConfiguration))
+        let photo = DiscoveryPhotoMetadata(resourceName: "places/place-1/photos/photo-1", width: 2_000,
+            height: 1_200, authors: [], googleMapsURL: nil)
+        #expect(PlacesURLProtocolStub.requests.isEmpty)
+        _ = try await loader.data(for: photo, maxWidth: 720, maxHeight: 405)
+        let request = try #require(PlacesURLProtocolStub.requests.first)
+        #expect(request.url?.path == "/v1/places/place-1/photos/photo-1/media")
+        #expect(request.url?.query?.contains("maxWidthPx=720") == true)
+        #expect(request.url?.query?.contains("maxHeightPx=405") == true)
+        #expect(request.value(forHTTPHeaderField: "X-Goog-Api-Key") == "test")
+        #expect(request.cachePolicy == .reloadIgnoringLocalCacheData)
+    }
+
+    @Test func googleDiscoveryPhotoNeverBecomesTripMediaOrArchiveContent() throws {
+        let trip = try repository.currentTrip()
+        let resourceName = "places/place-1/photos/transient-only"
+        let result = DiscoveryResult(id: "place-1", name: "Transient Cafe", category: .restaurant,
+            address: "Chiang Mai", latitude: 18.79, longitude: 98.98, distanceMeters: 200,
+            phone: nil, websiteURL: nil, googlePlaceID: "place-1",
+            previewPhoto: .init(resourceName: resourceName, width: 1_600, height: 900,
+                authors: [.init(displayName: "Author", profileURL: nil, profilePhotoURL: nil)],
+                googleMapsURL: URL(string: "https://maps.google.com/photo-source")))
+        let mapped = DiscoveryTripItemMapper().item(from: result, date: trip.startDate,
+                                                     time: trip.startDate, trip: trip)
+        #expect(mapped.presentationMedia == nil)
+        var exportedTrip = trip
+        guard case .restaurant(let restaurant) = mapped else {
+            Issue.record("Discovery restaurant werd niet als restaurant gemapt"); return
+        }
+        exportedTrip.restaurants.append(restaurant)
+        let encoded = try JSONEncoder().encode(exportedTrip)
+        let archiveTripJSON = String(decoding: encoded, as: UTF8.self)
+        #expect(!archiveTripJSON.contains(resourceName))
+        #expect(!archiveTripJSON.contains("photo-source"))
     }
 
     @Test func discoveryRankingWeightsEvidenceDistanceHiddenGemsAndDiversity() {

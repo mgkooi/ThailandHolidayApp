@@ -128,6 +128,24 @@ struct EditorialSignal: Equatable, Hashable, Sendable {
     var isScenic: Bool = false
 }
 
+/// Session-only Google Places photo data. Trip and favorite persistence deliberately
+/// never reference this type, so photo resource names cannot enter a trip archive.
+struct DiscoveryPhotoMetadata: Equatable, Sendable {
+    struct AuthorAttribution: Equatable, Sendable, Identifiable {
+        let displayName: String
+        let profileURL: URL?
+        let profilePhotoURL: URL?
+
+        var id: String { "\(displayName)|\(profileURL?.absoluteString ?? "")" }
+    }
+
+    let resourceName: String
+    let width: Int?
+    let height: Int?
+    let authors: [AuthorAttribution]
+    let googleMapsURL: URL?
+}
+
 enum RecommendationBadge: String, CaseIterable, Hashable, Sendable {
     case starWorthy, hiddenGem, instagramWorthy
     var title: String {
@@ -162,6 +180,7 @@ struct DiscoveryRecommendation: Identifiable, Equatable, Sendable {
     var isOpenNow: Bool? = nil
     var previewImageURL: URL? = nil
     var photoAttribution: String? = nil
+    var previewPhoto: DiscoveryPhotoMetadata? = nil
     var sourceProviders: Set<String> = []
 
     var location: TripLocation {

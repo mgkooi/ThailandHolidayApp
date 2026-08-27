@@ -90,6 +90,7 @@ final class GooglePlacesDiscoveryProvider: LocalDiscoverySearching, RadiusLocalD
                 rating: place.rating, reviewCount: place.userRatingCount,
                 priceLevel: place.priceLevel.flatMap(DiscoveryPriceLevel.init(googleValue:)),
                 googlePlaceID: id, primaryType: place.primaryType, isOpenNow: place.currentOpeningHours?.openNow,
+                previewPhoto: place.preferredPhoto?.discoveryMetadata,
                 sourceProviders: ["Google Places"])
         }
         cache[key] = Entry(createdAt: Date(), results: results)
@@ -97,7 +98,7 @@ final class GooglePlacesDiscoveryProvider: LocalDiscoverySearching, RadiusLocalD
         return results
     }
 
-    static let fieldMask = "places.id,places.displayName,places.formattedAddress,places.location,places.primaryType,places.types,places.rating,places.userRatingCount,places.priceLevel,places.currentOpeningHours.openNow,places.websiteUri"
+    static let fieldMask = "places.id,places.displayName,places.formattedAddress,places.location,places.primaryType,places.types,places.rating,places.userRatingCount,places.priceLevel,places.currentOpeningHours.openNow,places.websiteUri,places.photos.name,places.photos.widthPx,places.photos.heightPx,places.photos.authorAttributions.displayName,places.photos.authorAttributions.uri,places.photos.authorAttributions.photoUri,places.photos.googleMapsUri"
 
     private struct Response: Decodable { let places: [Place]? }
     private struct Place: Decodable {
@@ -112,9 +113,47 @@ final class GooglePlacesDiscoveryProvider: LocalDiscoverySearching, RadiusLocalD
         let priceLevel: String?
         let currentOpeningHours: OpeningHours?
         let websiteUri: URL?
+        let photos: [Photo]?
         struct DisplayName: Decodable { let text: String? }
         struct Location: Decodable { let latitude: Double?; let longitude: Double? }
         struct OpeningHours: Decodable { let openNow: Bool? }
+        struct Photo: Decodable {
+            let name: String?
+            let widthPx: Int?
+            let heightPx: Int?
+            let authorAttributions: [AuthorAttribution]?
+            let googleMapsUri: URL?
+            struct AuthorAttribution: Decodable {
+                let displayName: String?
+                let uri: URL?
+                let photoUri: URL?
+            }
+
+            var discoveryMetadata: DiscoveryPhotoMetadata? {
+                guard let name, !name.isEmpty else { return nil }
+                let authors = (authorAttributions ?? []).compactMap { author -> DiscoveryPhotoMetadata.AuthorAttribution? in
+                    guard let displayName = author.displayName?.trimmingCharacters(in: .whitespacesAndNewlines),
+                          !displayName.isEmpty else { return nil }
+                    return .init(displayName: displayName, profileURL: author.uri,
+                                 profilePhotoURL: author.photoUri)
+                }
+                return DiscoveryPhotoMetadata(resourceName: name, width: widthPx, height: heightPx,
+                                              authors: authors, googleMapsURL: googleMapsUri)
+            }
+        }
+
+        var preferredPhoto: Photo? {
+            photos?.filter { $0.name?.isEmpty == false }.max { lhs, rhs in
+                suitability(of: lhs) < suitability(of: rhs)
+            }
+        }
+
+        private func suitability(of photo: Photo) -> Double {
+            guard let width = photo.widthPx, let height = photo.heightPx, height > 0 else { return 0 }
+            let ratio = Double(width) / Double(height)
+            let landscapeFit = max(0, 1 - abs(ratio - (16.0 / 9.0)))
+            return landscapeFit * 10_000 + Double(min(width * height, 20_000_000)) / 20_000_000
+        }
     }
 }
 

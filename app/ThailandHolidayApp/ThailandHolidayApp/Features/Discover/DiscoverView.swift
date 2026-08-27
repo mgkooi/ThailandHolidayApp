@@ -165,9 +165,20 @@ private enum DiscoveryDisplayMode: String { case list, map }
 struct DiscoveryCard: View {
     let result: DiscoveryResult; let isSaved: Bool; let isPlanned: Bool
     var body: some View {
-        HStack(spacing: 14) {
-            ZStack { LinearGradient(colors: [Color.travelTeal.opacity(0.85), Color.travelPurple.opacity(0.65)], startPoint: .topLeading, endPoint: .bottomTrailing); Image(systemName: result.category.symbolName).font(.largeTitle).foregroundStyle(.white.opacity(0.9)) }
-                .frame(width: 104, height: 132).clipShape(RoundedRectangle(cornerRadius: 18))
+        VStack(alignment: .leading, spacing: 0) {
+            DiscoveryPhotoView(photo: result.previewPhoto, category: result.category,
+                               maxPixelWidth: 720, maxPixelHeight: 405,
+                               accessibilityIdentifier: result.previewPhoto == nil
+                                   ? "discoveryPhotoFallback.\(result.id)" : "discoveryPhoto.\(result.id)")
+                .aspectRatio(16 / 9, contentMode: .fit)
+                .overlay(alignment: .bottomTrailing) {
+                    if let photo = result.previewPhoto {
+                        Text(photo.authors.isEmpty ? "Google Maps" : "\(photo.authors.map(\.displayName).joined(separator: ", ")) · Google Maps")
+                            .font(.caption2).foregroundStyle(.white)
+                            .lineLimit(1).padding(.horizontal, 7).padding(.vertical, 4)
+                            .background(.black.opacity(0.58), in: Capsule()).padding(7)
+                    }
+                }
             VStack(alignment: .leading, spacing: 7) {
                 HStack { Text(result.name).font(.headline).lineLimit(2); Spacer(); Image(systemName: "chevron.right").foregroundStyle(.tertiary) }
                 Text(result.primaryType ?? result.category.title).font(.caption.weight(.semibold)).foregroundStyle(Color.travelTeal)
@@ -175,9 +186,9 @@ struct DiscoveryCard: View {
                 if let distance = result.distanceMeters { Label(DiscoveryDistanceFormatter.string(meters: distance), systemImage: "location").font(.caption).foregroundStyle(.secondary) }
                 HStack(spacing: 5) { if result.isOpenNow == true { badge("Open", color: .travelGreen) }; if result.isOpenNow == false { badge("Gesloten", color: .travelCoral) }; if result.badges.contains(.hiddenGem) { badge("Verborgen parel", color: .travelSun) }; if isPlanned { badge("In reis", color: .travelTeal) } else if isSaved { badge("Bewaard", color: .travelPurple) } }
                 if let reason { Text(reason).font(.caption2).foregroundStyle(.secondary).lineLimit(2) }
-            }.frame(maxWidth: .infinity, alignment: .leading)
-        }.padding(12).background(.background, in: RoundedRectangle(cornerRadius: 22)).travelCardShadow()
-            .accessibilityElement(children: .combine).accessibilityIdentifier("discoveryCard.\(result.id)")
+            }.padding(14).frame(maxWidth: .infinity, alignment: .leading)
+        }.background(.background, in: RoundedRectangle(cornerRadius: 22)).clipShape(RoundedRectangle(cornerRadius: 22)).travelCardShadow()
+            .accessibilityElement(children: .contain).accessibilityIdentifier("discoveryCard.\(result.id)")
     }
     private var reason: String? { if !result.editorialSignals.isEmpty { return "Genoemd door \(Set(result.editorialSignals.map(\.source)).count) reisgids(en)" }; if (result.reviewCount ?? 0) >= 1_000 { return "Veel betrouwbare beoordelingen" }; if result.badges.contains(.hiddenGem) { return "Sterk beoordeeld, buiten de grootste hotspots" }; return nil }
     private func badge(_ text: String, color: Color) -> some View { Text(text).font(.caption2.bold()).padding(.horizontal, 6).padding(.vertical, 3).background(color.opacity(0.18), in: Capsule()) }
@@ -195,7 +206,12 @@ private struct DiscoveryDetailView: View {
     @State private var showsCover = false
     var body: some View {
         NavigationStack { ScrollView { VStack(alignment: .leading, spacing: 18) {
-            ZStack { LinearGradient(colors: [.travelTeal, .travelPurple], startPoint: .topLeading, endPoint: .bottomTrailing); Image(systemName: result.category.symbolName).font(.system(size: 74)).foregroundStyle(.white.opacity(0.9)) }.frame(height: 240).clipShape(RoundedRectangle(cornerRadius: 24))
+            DiscoveryPhotoView(photo: result.previewPhoto, category: result.category,
+                               maxPixelWidth: 1_440, maxPixelHeight: 960,
+                               accessibilityIdentifier: result.previewPhoto == nil
+                                   ? "discoveryDetailPhotoFallback" : "discoveryDetailPhoto")
+                .aspectRatio(3 / 2, contentMode: .fit).clipShape(RoundedRectangle(cornerRadius: 24))
+            if let photo = result.previewPhoto { DiscoveryPhotoAttribution(photo: photo) }
             Text(result.name).font(.largeTitle.bold()); metadata
             if !result.editorialSignals.isEmpty { editorial }
             Map(initialPosition: .region(TripMapRegionBuilder.region(around: SearchLocation(name: result.name, latitude: result.latitude, longitude: result.longitude), radiusMeters: 1_500))) { Marker(result.name, coordinate: .init(latitude: result.latitude, longitude: result.longitude)) }.frame(height: 190).clipShape(RoundedRectangle(cornerRadius: 20)).allowsHitTesting(false)
@@ -228,7 +244,7 @@ private struct DiscoveryAddToDaySheet: View {
 private struct DiscoveryMapPreview: View {
     @Environment(TripStore.self) private var store; @Environment(\.mapOpening) private var opener
     let result: DiscoveryResult; let onDetails: () -> Void
-    var body: some View { VStack(alignment: .leading, spacing: 8) { Text(result.name).font(.headline); if let rating = result.rating { Text("\(rating, specifier: "%.1f") ★ (\((result.reviewCount ?? 0).formatted()))").font(.caption) }; HStack { Button("Details", action: onDetails).buttonStyle(.bordered); Button("Navigeer") { Task { await DiscoveryMapActions(opener: opener).navigate(result) } }.buttonStyle(.borderedProminent).tint(.travelTeal); Button { _ = store.saveDiscovery(result) } label: { Image(systemName: store.isDiscoverySaved(result) ? "bookmark.fill" : "bookmark") }.buttonStyle(.bordered) } }.padding(16).frame(maxWidth: .infinity, alignment: .leading).background(.regularMaterial, in: RoundedRectangle(cornerRadius: 20)) }
+    var body: some View { VStack(alignment: .leading, spacing: 8) { HStack(spacing: 12) { DiscoveryPhotoView(photo: result.previewPhoto, category: result.category, maxPixelWidth: 320, maxPixelHeight: 180, accessibilityIdentifier: result.previewPhoto == nil ? "discoveryMapPhotoFallback" : "discoveryMapPhoto").frame(width: 112, height: 72).clipShape(RoundedRectangle(cornerRadius: 10)); VStack(alignment: .leading, spacing: 4) { Text(result.name).font(.headline).lineLimit(2); if let rating = result.rating { Text("\(rating, specifier: "%.1f") ★ (\((result.reviewCount ?? 0).formatted()))").font(.caption) }; if let photo = result.previewPhoto { DiscoveryPhotoAttribution(photo: photo, compact: true) } } }; HStack { Button("Details", action: onDetails).buttonStyle(.bordered); Button("Navigeer") { Task { await DiscoveryMapActions(opener: opener).navigate(result) } }.buttonStyle(.borderedProminent).tint(.travelTeal); Button { _ = store.saveDiscovery(result) } label: { Image(systemName: store.isDiscoverySaved(result) ? "bookmark.fill" : "bookmark") }.buttonStyle(.bordered) } }.padding(16).frame(maxWidth: .infinity, alignment: .leading).background(.regularMaterial, in: RoundedRectangle(cornerRadius: 20)) }
 }
 
 private struct DiscoveryLoadingView: View { var body: some View { ScrollView { LazyVStack(spacing: 14) { ForEach(0..<4, id: \.self) { _ in RoundedRectangle(cornerRadius: 22).fill(.quaternary).frame(height: 156).overlay(alignment: .leading) { VStack(alignment: .leading, spacing: 10) { RoundedRectangle(cornerRadius: 4).fill(.tertiary).frame(width: 180, height: 18); RoundedRectangle(cornerRadius: 4).fill(.tertiary).frame(width: 120, height: 12) }.padding(20) } } }.padding(.horizontal, 20) }.accessibilityLabel("Resultaten laden") } }
