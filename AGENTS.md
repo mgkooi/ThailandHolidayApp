@@ -1,4 +1,4 @@
-# Thailand Holiday App
+# Reizz
 
 ## Project Goal
 Build a private native iPhone application for a Thailand holiday.

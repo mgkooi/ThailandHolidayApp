@@ -42,6 +42,12 @@ struct ThailandHolidayAppTests {
         #expect(info.buildNumber == "89")
     }
 
+    @Test func appBundleInfoUsesReizzAsVisibleFallbackName() {
+        let info = AppBundleInfo(infoDictionary: [:])
+
+        #expect(info.appName == "Reizz")
+    }
+
     @Test func currentReleaseInfoContainsDiscoverChangelog() {
         let release = AppReleaseInfo.current
 

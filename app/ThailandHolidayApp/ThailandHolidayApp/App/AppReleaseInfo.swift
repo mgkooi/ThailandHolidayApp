@@ -16,7 +16,7 @@ struct AppBundleInfo: Equatable {
     init(infoDictionary: [String: Any]) {
         appName = (infoDictionary["CFBundleDisplayName"] as? String)
             ?? (infoDictionary["CFBundleName"] as? String)
-            ?? "ThailandHolidayApp"
+            ?? "Reizz"
         version = (infoDictionary["CFBundleShortVersionString"] as? String) ?? "Onbekend"
         buildNumber = (infoDictionary["CFBundleVersion"] as? String) ?? "Onbekend"
     }

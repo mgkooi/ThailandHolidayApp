@@ -1,4 +1,4 @@
-# Thailand Holiday App
+# Reizz
 
 Private native iPhone travel application for Thailand.
 

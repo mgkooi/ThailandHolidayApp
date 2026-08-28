@@ -318,6 +318,7 @@ final class ThailandHolidayAppUITests: XCTestCase {
         app.tabBars.buttons["Meer"].tap()
 
         XCTAssertTrue(app.descendants(matching: .any)["appVersionInfo"].waitForExistence(timeout: 5))
+        XCTAssertTrue(app.staticTexts["Reizz"].exists)
         XCTAssertTrue(app.staticTexts["Ontdekken 2.1"].exists)
         app.descendants(matching: .any)["whatsNewRow"].tap()
 
