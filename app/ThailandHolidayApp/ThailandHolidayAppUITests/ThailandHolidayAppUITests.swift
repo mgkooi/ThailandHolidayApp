@@ -313,6 +313,20 @@ final class ThailandHolidayAppUITests: XCTestCase {
     }
 
     @MainActor
+    func testMoreShowsVersionAndCurrentChangelog() throws {
+        let app = launchIsolatedApp()
+        app.tabBars.buttons["Meer"].tap()
+
+        XCTAssertTrue(app.descendants(matching: .any)["appVersionInfo"].waitForExistence(timeout: 5))
+        XCTAssertTrue(app.staticTexts["Ontdekken 2.1"].exists)
+        app.descendants(matching: .any)["whatsNewRow"].tap()
+
+        XCTAssertTrue(app.navigationBars["Wat is nieuw"].waitForExistence(timeout: 5))
+        XCTAssertTrue(app.staticTexts["Echte previewfoto's bij Ontdekken-resultaten"].exists)
+        XCTAssertTrue(app.staticTexts["Native fallback wanneer geen foto beschikbaar is"].exists)
+    }
+
+    @MainActor
     private func launchIsolatedApp(extraArguments: [String] = []) -> XCUIApplication {
         let app = XCUIApplication()
         app.launchArguments = ["--ui-testing", "--ui-testing-reset"] + extraArguments

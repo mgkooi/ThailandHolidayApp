@@ -7,6 +7,27 @@ import UIKit
 struct ThailandHolidayAppTests {
     private let repository = LocalTripRepository()
 
+    @Test func appBundleInfoReadsVersionAndBuildNumber() {
+        let info = AppBundleInfo(infoDictionary: [
+            "CFBundleDisplayName": "Test Holiday App",
+            "CFBundleShortVersionString": "3.4.5",
+            "CFBundleVersion": "89"
+        ])
+
+        #expect(info.appName == "Test Holiday App")
+        #expect(info.version == "3.4.5")
+        #expect(info.buildNumber == "89")
+    }
+
+    @Test func currentReleaseInfoContainsDiscoverChangelog() {
+        let release = AppReleaseInfo.current
+
+        #expect(release.releaseName == "Ontdekken 2.1")
+        #expect(!release.releaseNotes.isEmpty)
+        #expect(release.releaseNotes.contains("Echte previewfoto's bij Ontdekken-resultaten"))
+        #expect(release.releaseNotes.contains("Native fallback wanneer geen foto beschikbaar is"))
+    }
+
     @Test func bundledJSONDecodesCompleteTrip() throws {
         let package = try repository.loadPackage()
 
