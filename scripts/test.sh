@@ -2,5 +2,7 @@
 
 set -euo pipefail
 
+bash "$(dirname "$0")/test-cloud-secrets.sh"
+
 ssh -F ~/.ssh/config thailand-mac \
     'cd /Users/martijnkooi/Developer/ThailandHolidayApp/app/ThailandHolidayApp && xcodebuild -project ThailandHolidayApp.xcodeproj -scheme ThailandHolidayApp -configuration Debug -destination "platform=iOS Simulator,name=iPhone 17 Pro,OS=latest" test'

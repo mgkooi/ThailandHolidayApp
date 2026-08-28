@@ -1,9 +1,32 @@
 import Foundation
+import OSLog
 import SwiftUI
 import UIKit
 
 protocol DiscoveryPhotoLoading: Sendable {
     func data(for photo: DiscoveryPhotoMetadata, maxWidth: Int, maxHeight: Int) async throws -> Data
+}
+
+enum DiscoveryPhotoLoadError: Error, Equatable {
+    case keyMissing
+    case invalidRequest
+    case authorization(statusCode: Int)
+    case quota(statusCode: Int)
+    case http(statusCode: Int)
+    case emptyResponse
+    case networking
+
+    var category: String {
+        switch self {
+        case .keyMissing: "key_missing"
+        case .invalidRequest: "invalid_request"
+        case .authorization: "authorization"
+        case .quota: "quota"
+        case .http: "http"
+        case .emptyResponse: "download"
+        case .networking: "networking"
+        }
+    }
 }
 
 /// Fetches Google photo media on demand. The ephemeral session has no URL cache and
@@ -13,6 +36,8 @@ final class GooglePlacesPhotoLoader: DiscoveryPhotoLoading, @unchecked Sendable 
 
     private let apiKey: String?
     private let session: URLSession
+    private static let logger = Logger(subsystem: Bundle.main.bundleIdentifier ?? "ThailandHolidayApp",
+                                       category: "DiscoveryPhoto")
 
     init(configuration: MediaSearchConfiguration = .app, session: URLSession? = nil) {
         apiKey = configuration.googlePlacesAPIKey
@@ -24,25 +49,50 @@ final class GooglePlacesPhotoLoader: DiscoveryPhotoLoading, @unchecked Sendable 
             configuration.requestCachePolicy = .reloadIgnoringLocalCacheData
             self.session = URLSession(configuration: configuration)
         }
+        Self.logger.info("provider=google configured=\(self.apiKey != nil, privacy: .public)")
     }
 
     func data(for photo: DiscoveryPhotoMetadata, maxWidth: Int, maxHeight: Int) async throws -> Data {
-        guard let apiKey else { throw MediaSearchError.notConfigured }
+        guard let apiKey else {
+            Self.logger.error("provider=google request=not_started configured=false error=key_missing")
+            throw DiscoveryPhotoLoadError.keyMissing
+        }
         guard photo.resourceName.hasPrefix("places/"),
               var components = URLComponents(string: "https://places.googleapis.com/v1/\(photo.resourceName)/media")
-        else { throw MediaSearchError.invalidResponse }
+        else {
+            Self.logger.error("provider=google request=not_started configured=true error=invalid_request")
+            throw DiscoveryPhotoLoadError.invalidRequest
+        }
         components.queryItems = [
             URLQueryItem(name: "maxWidthPx", value: String(min(max(maxWidth, 1), 4_800))),
             URLQueryItem(name: "maxHeightPx", value: String(min(max(maxHeight, 1), 4_800)))
         ]
-        guard let url = components.url else { throw MediaSearchError.invalidResponse }
+        guard let url = components.url else { throw DiscoveryPhotoLoadError.invalidRequest }
         var request = URLRequest(url: url, cachePolicy: .reloadIgnoringLocalCacheData)
         request.setValue(apiKey, forHTTPHeaderField: "X-Goog-Api-Key")
-        let (data, response) = try await session.data(for: request)
-        guard let response = response as? HTTPURLResponse,
-              (200..<300).contains(response.statusCode), !data.isEmpty else {
-            throw MediaSearchError.invalidResponse
+        Self.logger.info("provider=google request=started configured=true")
+        let data: Data
+        let response: URLResponse
+        do {
+            (data, response) = try await session.data(for: request)
+        } catch is CancellationError {
+            throw CancellationError()
+        } catch {
+            Self.logger.error("provider=google request=failed configured=true error=networking")
+            throw DiscoveryPhotoLoadError.networking
         }
+        guard let response = response as? HTTPURLResponse else {
+            Self.logger.error("provider=google request=failed configured=true error=invalid_response")
+            throw DiscoveryPhotoLoadError.invalidRequest
+        }
+        Self.logger.info("provider=google request=finished status=\(response.statusCode, privacy: .public)")
+        switch response.statusCode {
+        case 200..<300: break
+        case 401, 403: throw DiscoveryPhotoLoadError.authorization(statusCode: response.statusCode)
+        case 429: throw DiscoveryPhotoLoadError.quota(statusCode: response.statusCode)
+        default: throw DiscoveryPhotoLoadError.http(statusCode: response.statusCode)
+        }
+        guard !data.isEmpty else { throw DiscoveryPhotoLoadError.emptyResponse }
         return data
     }
 }
@@ -68,6 +118,8 @@ struct DiscoveryPhotoView: View {
 
     @State private var image: UIImage?
     @State private var failed = false
+    private static let logger = Logger(subsystem: Bundle.main.bundleIdentifier ?? "ThailandHolidayApp",
+                                       category: "DiscoveryPhotoUI")
 
     var body: some View {
         ZStack {
@@ -100,13 +152,20 @@ struct DiscoveryPhotoView: View {
         }
         do {
             let data = try await loader.data(for: photo, maxWidth: maxPixelWidth, maxHeight: maxPixelHeight)
-            guard !Task.isCancelled, let decoded = UIImage(data: data) else { return }
+            guard !Task.isCancelled else { return }
+            guard let decoded = UIImage(data: data) else {
+                failed = true
+                Self.logger.error("provider=google presentation=fallback error=decoding")
+                return
+            }
             image = decoded
         } catch is CancellationError {
             return
         } catch {
             guard !Task.isCancelled else { return }
             failed = true
+            let category = (error as? DiscoveryPhotoLoadError)?.category ?? "download"
+            Self.logger.error("provider=google presentation=fallback error=\(category, privacy: .public)")
         }
     }
 }

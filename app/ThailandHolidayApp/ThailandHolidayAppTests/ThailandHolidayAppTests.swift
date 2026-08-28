@@ -7,6 +7,29 @@ import UIKit
 struct ThailandHolidayAppTests {
     private let repository = LocalTripRepository()
 
+    @Test func appConfigurationReadsResolvedReleaseValues() {
+        let configuration = MediaSearchConfiguration(infoDictionary: [
+            "GOOGLE_PLACES_API_KEY": "release-google",
+            "BRAVE_SEARCH_API_KEY": "release-brave",
+            "UNSPLASH_ACCESS_KEY": "release-unsplash"
+        ])
+
+        #expect(configuration.googlePlacesAPIKey != nil)
+        #expect(configuration.braveSearchAPIKey != nil)
+        #expect(configuration.unsplashAccessKey != nil)
+    }
+
+    @Test func appConfigurationTreatsMissingEmptyAndUnexpandedValuesAsMissing() {
+        let configuration = MediaSearchConfiguration(infoDictionary: [
+            "GOOGLE_PLACES_API_KEY": "",
+            "BRAVE_SEARCH_API_KEY": "$(BRAVE_SEARCH_API_KEY)"
+        ])
+
+        #expect(configuration.googlePlacesAPIKey == nil)
+        #expect(configuration.braveSearchAPIKey == nil)
+        #expect(configuration.unsplashAccessKey == nil)
+    }
+
     @Test func appBundleInfoReadsVersionAndBuildNumber() {
         let info = AppBundleInfo(infoDictionary: [
             "CFBundleDisplayName": "Test Holiday App",
@@ -2002,7 +2025,7 @@ struct ThailandHolidayAppTests {
         #expect(results.first?.previewPhoto == nil)
     }
 
-    @Test func googlePhotoLoaderIsLazyBoundedAndUsesEphemeralRequest() async throws {
+    @Test @MainActor func googlePhotoLoaderIsLazyBoundedAndUsesEphemeralRequest() async throws {
         PlacesURLProtocolStub.requests = []
         PlacesURLProtocolStub.handler = { _ in (200, Data([0x01, 0x02, 0x03])) }
         let sessionConfiguration = URLSessionConfiguration.ephemeral
@@ -2021,6 +2044,41 @@ struct ThailandHolidayAppTests {
         #expect(request.url?.query?.contains("maxHeightPx=405") == true)
         #expect(request.value(forHTTPHeaderField: "X-Goog-Api-Key") == "test")
         #expect(request.cachePolicy == .reloadIgnoringLocalCacheData)
+    }
+
+    @Test @MainActor func googlePhotoLoaderClassifiesAuthorizationFailures() async throws {
+        for statusCode in [401, 403] {
+            PlacesURLProtocolStub.requests = []
+            PlacesURLProtocolStub.handler = { _ in (statusCode, Data()) }
+            let configuration = URLSessionConfiguration.ephemeral
+            configuration.protocolClasses = [PlacesURLProtocolStub.self]
+            let loader = GooglePlacesPhotoLoader(configuration: .init(
+                googlePlacesAPIKey: "test", braveSearchAPIKey: nil, unsplashAccessKey: nil),
+                session: URLSession(configuration: configuration))
+            let photo = DiscoveryPhotoMetadata(resourceName: "places/place/photos/photo", width: nil,
+                height: nil, authors: [], googleMapsURL: nil)
+
+            do {
+                _ = try await loader.data(for: photo, maxWidth: 400, maxHeight: 300)
+                Issue.record("HTTP \(statusCode) had moeten falen")
+            } catch let error as DiscoveryPhotoLoadError {
+                #expect(error == .authorization(statusCode: statusCode))
+            }
+        }
+    }
+
+    @Test @MainActor func googlePhotoLoaderReportsMissingConfiguration() async throws {
+        let loader = GooglePlacesPhotoLoader(configuration: .init(
+            googlePlacesAPIKey: nil, braveSearchAPIKey: nil, unsplashAccessKey: nil))
+        let photo = DiscoveryPhotoMetadata(resourceName: "places/place/photos/photo", width: nil,
+            height: nil, authors: [], googleMapsURL: nil)
+
+        do {
+            _ = try await loader.data(for: photo, maxWidth: 400, maxHeight: 300)
+            Issue.record("Een ontbrekende key had moeten falen")
+        } catch let error as DiscoveryPhotoLoadError {
+            #expect(error == .keyMissing)
+        }
     }
 
     @Test func googleDiscoveryPhotoNeverBecomesTripMediaOrArchiveContent() throws {

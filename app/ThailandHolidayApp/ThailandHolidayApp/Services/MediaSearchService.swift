@@ -44,15 +44,26 @@ struct MediaSearchConfiguration: Sendable {
     let googlePlacesAPIKey: String?
     let braveSearchAPIKey: String?
     let unsplashAccessKey: String?
+
     static var app: Self {
+        Self(infoDictionary: Bundle.main.infoDictionary ?? [:])
+    }
+
+    init(googlePlacesAPIKey: String?, braveSearchAPIKey: String?, unsplashAccessKey: String?) {
+        self.googlePlacesAPIKey = googlePlacesAPIKey
+        self.braveSearchAPIKey = braveSearchAPIKey
+        self.unsplashAccessKey = unsplashAccessKey
+    }
+
+    init(infoDictionary: [String: Any]) {
         func configured(_ key: String) -> String? {
-            guard let value = (Bundle.main.object(forInfoDictionaryKey: key) as? String)?.nilIfBlank,
+            guard let value = (infoDictionary[key] as? String)?.nilIfBlank,
                   !value.hasPrefix("$(") else { return nil }
             return value
         }
-        return Self(googlePlacesAPIKey: configured("GOOGLE_PLACES_API_KEY"),
-                    braveSearchAPIKey: configured("BRAVE_SEARCH_API_KEY"),
-                    unsplashAccessKey: configured("UNSPLASH_ACCESS_KEY"))
+        googlePlacesAPIKey = configured("GOOGLE_PLACES_API_KEY")
+        braveSearchAPIKey = configured("BRAVE_SEARCH_API_KEY")
+        unsplashAccessKey = configured("UNSPLASH_ACCESS_KEY")
     }
 }
 
