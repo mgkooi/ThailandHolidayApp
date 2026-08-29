@@ -9,6 +9,15 @@ struct TripHourWeather: Identifiable, Equatable, Sendable {
     let date: Date
     let temperatureCelsius: Double
     let symbolName: String
+    var precipitationChance: Double? = nil
+}
+
+struct TripDayWeather: Equatable, Sendable {
+    let date: Date
+    let highTemperatureCelsius: Double
+    let lowTemperatureCelsius: Double
+    let symbolName: String
+    let precipitationChance: Double?
 }
 
 enum TripWeatherState: Equatable {
@@ -21,6 +30,11 @@ enum TripWeatherState: Equatable {
 
 protocol TripWeatherProviding: Sendable {
     func hourlyWeather(latitude: Double, longitude: Double) async throws -> [TripHourWeather]
+    func dailyWeather(latitude: Double, longitude: Double) async throws -> [TripDayWeather]
+}
+
+extension TripWeatherProviding {
+    func dailyWeather(latitude: Double, longitude: Double) async throws -> [TripDayWeather] { [] }
 }
 
 struct AppleTripWeatherProvider: TripWeatherProviding {
@@ -31,8 +45,20 @@ struct AppleTripWeatherProvider: TripWeatherProviding {
             TripHourWeather(
                 date: $0.date,
                 temperatureCelsius: $0.temperature.converted(to: .celsius).value,
-                symbolName: $0.symbolName
+                symbolName: $0.symbolName,
+                precipitationChance: $0.precipitationChance
             )
+        }
+    }
+
+    func dailyWeather(latitude: Double, longitude: Double) async throws -> [TripDayWeather] {
+        let location = CLLocation(latitude: latitude, longitude: longitude)
+        let forecast = try await WeatherKit.WeatherService.shared.weather(for: location, including: .daily)
+        return forecast.map {
+            TripDayWeather(date: $0.date,
+                highTemperatureCelsius: $0.highTemperature.converted(to: .celsius).value,
+                lowTemperatureCelsius: $0.lowTemperature.converted(to: .celsius).value,
+                symbolName: $0.symbolName, precipitationChance: $0.precipitationChance)
         }
     }
 }
@@ -47,8 +73,54 @@ struct UnavailableTripWeatherProvider: TripWeatherProviding {
 }
 
 struct TripWeatherCacheKey: Hashable, Sendable {
-    let destinationID: UUID
+    let latitudeBucket: Int
+    let longitudeBucket: Int
     let day: Date
+
+    init(latitude: Double, longitude: Double, day: Date) {
+        latitudeBucket = Int((latitude * 1_000).rounded())
+        longitudeBucket = Int((longitude * 1_000).rounded())
+        self.day = day
+    }
+}
+
+enum TripWeatherLocationSource: String, Sendable {
+    case accommodationCoordinates
+    case plannedItem
+    case currentLocation
+    case destination
+    case accommodationGeocode
+}
+
+struct TripWeatherLocation: Equatable, Sendable {
+    let name: String
+    let latitude: Double
+    let longitude: Double
+    let source: TripWeatherLocationSource
+}
+
+enum TripWeatherLocationSelector {
+    static func select(accommodation: Accommodation?, plannedItems: [ManagedTripItem],
+                       currentLocation: SearchLocation?, destination: Destination?) -> TripWeatherLocation? {
+        if let accommodation, let latitude = accommodation.latitude, let longitude = accommodation.longitude {
+            return TripWeatherLocation(name: accommodation.placeName ?? accommodation.name,
+                latitude: latitude, longitude: longitude, source: .accommodationCoordinates)
+        }
+        for item in TodayItemSorter.sorted(plannedItems) {
+            guard let target = item.navigationTarget,
+                  let latitude = target.location.latitude, let longitude = target.location.longitude else { continue }
+            return TripWeatherLocation(name: target.name, latitude: latitude, longitude: longitude, source: .plannedItem)
+        }
+        if let currentLocation {
+            return TripWeatherLocation(name: currentLocation.name, latitude: currentLocation.latitude,
+                longitude: currentLocation.longitude, source: .currentLocation)
+        }
+        if let destination {
+            return TripWeatherLocation(name: destination.name, latitude: destination.latitude,
+                longitude: destination.longitude, source: .destination)
+        }
+        return nil
+    }
 }
 
 @MainActor
@@ -61,6 +133,7 @@ final class TripWeatherService {
 
     private struct CacheEntry {
         let forecast: [TripHourWeather]
+        let dailyForecast: TripDayWeather?
         let state: TripWeatherState
         let fetchedAt: Date
     }
@@ -71,6 +144,7 @@ final class TripWeatherService {
     private var activeKey: TripWeatherCacheKey?
 
     private(set) var hourlyForecast: [TripHourWeather] = []
+    private(set) var dailyForecast: TripDayWeather?
     private(set) var state: TripWeatherState = .idle
 
     var isLoading: Bool { state == .loading }
@@ -91,14 +165,15 @@ final class TripWeatherService {
     }
 
     func refresh(
-        destination: Destination,
+        location: TripWeatherLocation,
         date: Date,
         timeZone: TimeZone,
         force: Bool = false,
         now: Date = .now
     ) async {
         let calendar = TripCalendar.calendar(in: timeZone)
-        let key = TripWeatherCacheKey(destinationID: destination.id, day: calendar.startOfDay(for: date))
+        let day = calendar.startOfDay(for: date)
+        let key = TripWeatherCacheKey(latitude: location.latitude, longitude: location.longitude, day: day)
 
         if !force, let cached = cache[key], now.timeIntervalSince(cached.fetchedAt) < cacheLifetime {
             apply(cached, key: key)
@@ -108,34 +183,51 @@ final class TripWeatherService {
 
         activeKey = key
         hourlyForecast = []
+        dailyForecast = nil
         state = .loading
+#if DEBUG
+        Self.logger.debug("Weather location source=\(location.source.rawValue, privacy: .public) lat=\(location.latitude, format: .fixed(precision: 2), privacy: .public) lon=\(location.longitude, format: .fixed(precision: 2), privacy: .public) date=\(day, privacy: .public); request started")
+#endif
 
         do {
-            let available = try await provider.hourlyWeather(
-                latitude: destination.latitude,
-                longitude: destination.longitude
-            )
+            let isToday = calendar.isDate(date, inSameDayAs: now)
+            let available = try await provider.hourlyWeather(latitude: location.latitude, longitude: location.longitude)
+            let availableDays = isToday ? [] : try await provider.dailyWeather(latitude: location.latitude, longitude: location.longitude)
             guard !Task.isCancelled, activeKey == key else { return }
-            let selected = TripWeatherSelector.select(from: available, for: date, timeZone: timeZone)
-            let resultingState: TripWeatherState = selected.count == TripWeatherSelector.requestedHours.count
-                ? .available
-                : .unavailable
-            let entry = CacheEntry(forecast: selected, state: resultingState, fetchedAt: now)
+            let selected = isToday
+                ? TripWeatherSelector.selectCurrent(from: available, now: now, timeZone: timeZone)
+                : TripWeatherSelector.select(from: available, for: date, timeZone: timeZone)
+            dailyForecast = availableDays.first { calendar.isDate($0.date, inSameDayAs: date) }
+            let resultingState: TripWeatherState = (!selected.isEmpty || dailyForecast != nil) ? .available : .unavailable
+            let entry = CacheEntry(forecast: selected, dailyForecast: dailyForecast,
+                                   state: resultingState, fetchedAt: now)
             cache[key] = entry
             apply(entry, key: key)
+#if DEBUG
+            Self.logger.debug("WeatherKit request succeeded state=\(String(describing: resultingState), privacy: .public)")
+#endif
         } catch is CancellationError {
             return
         } catch {
             guard activeKey == key else { return }
             hourlyForecast = []
+            dailyForecast = nil
             state = .failed
-            Self.logger.error("WeatherKit request failed: \(error.localizedDescription, privacy: .public)")
+            Self.logger.error("WeatherKit request failed category=\(String(describing: type(of: error)), privacy: .public)")
         }
+    }
+
+    func refresh(destination: Destination, date: Date, timeZone: TimeZone,
+                 force: Bool = false, now: Date = .now) async {
+        await refresh(location: TripWeatherLocation(name: destination.name, latitude: destination.latitude,
+            longitude: destination.longitude, source: .destination), date: date, timeZone: timeZone,
+            force: force, now: now)
     }
 
     private func apply(_ entry: CacheEntry, key: TripWeatherCacheKey) {
         activeKey = key
         hourlyForecast = entry.forecast
+        dailyForecast = entry.dailyForecast
         state = entry.state
     }
 }
@@ -158,6 +250,16 @@ enum TripWeatherSelector {
                 .min { abs($0.date.timeIntervalSince(target)) < abs($1.date.timeIntervalSince(target)) }
                 .flatMap { abs($0.date.timeIntervalSince(target)) <= 90 * 60 ? $0 : nil }
         }
+    }
+
+    static func selectCurrent(from forecast: [TripHourWeather], now: Date,
+                              timeZone: TimeZone) -> [TripHourWeather] {
+        let calendar = TripCalendar.calendar(in: timeZone)
+        return forecast
+            .filter { calendar.isDate($0.date, inSameDayAs: now) && $0.date >= now.addingTimeInterval(-30 * 60) }
+            .sorted { $0.date < $1.date }
+            .prefix(4)
+            .map { $0 }
     }
 
     static func celsiusText(_ value: Double) -> String {

@@ -45,6 +45,14 @@ extension TripItemKind {
     }
 }
 
+enum TodaySortPriority: Int, Sendable {
+    case transport = 0
+    case accommodation = 1
+    case activity = 2
+    case restaurant = 3
+    case other = 4
+}
+
 enum ManagedTripItem: Identifiable, Equatable {
     case flight(Flight)
     case accommodation(Accommodation)
@@ -81,6 +89,30 @@ enum ManagedTripItem: Identifiable, Equatable {
         case .restaurant: .restaurant
         case .activity: .activity
         case .other: .other
+        }
+    }
+
+    var todaySortPriority: TodaySortPriority {
+        switch self {
+        case .flight, .transfer, .ferry, .train, .rentalVehicle: .transport
+        case .accommodation: .accommodation
+        case .activity: .activity
+        case .restaurant: .restaurant
+        case .other: .other
+        }
+    }
+
+    var todayStartDate: Date? {
+        switch self {
+        case .flight(let value): value.departureTime
+        case .accommodation(let value): value.checkIn
+        case .transfer(let value): value.startTime
+        case .ferry(let value): value.departureTime
+        case .train(let value): value.departureTime
+        case .rentalVehicle(let value): value.pickupTime
+        case .restaurant(let value): value.time
+        case .activity(let value): value.startTime
+        case .other(let value): value.startTime
         }
     }
 
@@ -209,5 +241,21 @@ enum ManagedTripItem: Identifiable, Equatable {
             values[values.startIndex].filename = filename
         }
         return replacingMedia(values).replacingAttachment(with: filename)
+    }
+}
+
+enum TodayItemSorter {
+    static func sorted(_ items: [ManagedTripItem]) -> [ManagedTripItem] {
+        items.sorted { lhs, rhs in
+            if lhs.todaySortPriority != rhs.todaySortPriority {
+                return lhs.todaySortPriority.rawValue < rhs.todaySortPriority.rawValue
+            }
+            switch (lhs.todayStartDate, rhs.todayStartDate) {
+            case let (left?, right?) where left != right: return left < right
+            case (_?, nil): return true
+            case (nil, _?): return false
+            default: return lhs.id.uuidString < rhs.id.uuidString
+            }
+        }
     }
 }

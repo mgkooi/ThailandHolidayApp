@@ -303,6 +303,80 @@ struct ThailandHolidayAppTests {
         #expect(TripWeatherSelector.celsiusText(28.6) == "29°")
     }
 
+    @Test func accommodationNightsUseLocalCalendarDaysAcrossBoundariesAndTimeZones() throws {
+        var accommodation = try #require(repository.currentTrip().accommodations.first)
+        func date(_ year: Int, _ month: Int, _ day: Int, _ hour: Int, _ zone: TimeZone) -> Date {
+            var calendar = Calendar(identifier: .gregorian); calendar.timeZone = zone
+            return calendar.date(from: DateComponents(year: year, month: month, day: day, hour: hour))!
+        }
+        for zone in [TimeZone(identifier: "Asia/Bangkok")!, TimeZone(identifier: "Europe/Amsterdam")!] {
+            accommodation = Accommodation(id: accommodation.id, name: accommodation.name, type: accommodation.type,
+                destinationID: accommodation.destinationID, checkIn: date(2026, 9, 11, 23, zone),
+                checkOut: date(2026, 9, 12, 1, zone), address: accommodation.address,
+                latitude: accommodation.latitude, longitude: accommodation.longitude,
+                roomDescription: accommodation.roomDescription, bookingReference: nil, websiteURL: nil,
+                bookingURL: nil, phoneNumber: nil)
+            #expect(accommodation.numberOfNights(in: zone) == 1)
+        }
+        let zone = TimeZone(identifier: "Asia/Bangkok")!
+        func nights(_ start: (Int, Int, Int), _ end: (Int, Int, Int)) -> Int {
+            let value = Accommodation(id: UUID(), name: "Hotel", type: .hotel, destinationID: nil,
+                checkIn: date(start.0, start.1, start.2, 18, zone), checkOut: date(end.0, end.1, end.2, 7, zone),
+                address: "", latitude: nil, longitude: nil, roomDescription: "", bookingReference: nil,
+                websiteURL: nil, bookingURL: nil, phoneNumber: nil)
+            return value.numberOfNights(in: zone)
+        }
+        #expect(nights((2026, 9, 11), (2026, 9, 15)) == 4)
+        #expect(nights((2026, 9, 11), (2026, 9, 11)) == 0)
+        #expect(nights((2026, 9, 30), (2026, 10, 1)) == 1)
+        #expect(nights((2026, 12, 31), (2027, 1, 1)) == 1)
+    }
+
+    @Test func todaySorterKeepsAllTransportFirstAndOrdersByDepartureTime() throws {
+        let trip = try repository.currentTrip()
+        let day = trip.startDate
+        let calendar = TripCalendar.calendar(in: trip.timeZone)
+        let early = calendar.date(bySettingHour: 8, minute: 0, second: 0, of: day)!
+        let late = calendar.date(bySettingHour: 15, minute: 0, second: 0, of: day)!
+        let taxi = Transfer(id: UUID(), date: day, startTime: late, endTime: nil, type: .taxi,
+            provider: "Taxi", origin: "A", destination: "B", bookingReference: nil, notes: nil,
+            url: nil, attachmentFilename: nil)
+        let boat = Ferry(id: UUID(), date: day, operatorName: "Boat", departureLocation: "A",
+            arrivalLocation: "B", departureTime: early, arrivalTime: nil, bookingReference: nil,
+            notes: nil, url: nil, attachmentFilename: nil)
+        let activity = trip.activities[0]
+        let restaurant = RestaurantReservation(id: UUID(), date: day, time: early, name: "Dinner",
+            address: nil, latitude: nil, longitude: nil, reservationName: nil, reservationReference: nil,
+            notes: nil, url: nil, attachmentFilename: nil)
+        let accommodation = try #require(trip.accommodations.first)
+        let sorted = TodayItemSorter.sorted([.activity(activity), .transfer(taxi), .restaurant(restaurant),
+                                              .accommodation(accommodation), .ferry(boat)])
+        #expect(sorted.map(\.todaySortPriority) == [.transport, .transport, .accommodation, .activity, .restaurant])
+        #expect(sorted[0].id == boat.id)
+        #expect(sorted[1].id == taxi.id)
+    }
+
+    @Test func weatherLocationPrefersAccommodationThenPlannedItemCurrentLocationAndDestination() throws {
+        let trip = try repository.currentTrip()
+        let destination = try #require(trip.destinations.first)
+        let accommodation = try #require(trip.accommodations.first)
+        let current = SearchLocation(name: "GPS", latitude: 52.37, longitude: 4.90)
+        let selected = TripWeatherLocationSelector.select(accommodation: accommodation, plannedItems: [],
+            currentLocation: current, destination: destination)
+        #expect(selected?.source == .accommodationCoordinates)
+        var withoutCoordinates = accommodation
+        withoutCoordinates = Accommodation(id: withoutCoordinates.id, name: withoutCoordinates.name,
+            type: withoutCoordinates.type, destinationID: withoutCoordinates.destinationID,
+            checkIn: withoutCoordinates.checkIn, checkOut: withoutCoordinates.checkOut,
+            address: withoutCoordinates.address, latitude: nil, longitude: nil,
+            roomDescription: withoutCoordinates.roomDescription, bookingReference: nil,
+            websiteURL: nil, bookingURL: nil, phoneNumber: nil)
+        #expect(TripWeatherLocationSelector.select(accommodation: withoutCoordinates, plannedItems: [],
+            currentLocation: current, destination: destination)?.source == .currentLocation)
+        #expect(TripWeatherLocationSelector.select(accommodation: nil, plannedItems: [],
+            currentLocation: nil, destination: destination)?.source == .destination)
+    }
+
     @Test @MainActor func weatherServiceShowsUnavailableAndChangesWithDestination() async throws {
         let trip = try repository.currentTrip()
         let firstDestination = try #require(trip.destinations.first)
@@ -357,6 +431,43 @@ struct ThailandHolidayAppTests {
         #expect(service.state == .unavailable)
         #expect(service.hourlyForecast.isEmpty)
         #expect(service.errorMessage == nil)
+    }
+
+    @Test @MainActor func weatherCacheSeparatesLocationAndSelectedLocalDate() async {
+        let zone = TimeZone(identifier: "Asia/Bangkok")!
+        let provider = CountingWeatherProvider()
+        let service = TripWeatherService(provider: provider)
+        let first = TripWeatherLocation(name: "A", latitude: 13.75, longitude: 100.50, source: .destination)
+        let second = TripWeatherLocation(name: "B", latitude: 52.37, longitude: 4.90, source: .currentLocation)
+        let day = TripCalendar.date(2026, 9, 11)
+        await service.refresh(location: first, date: day, timeZone: zone, now: day)
+        await service.refresh(location: first, date: day, timeZone: zone, now: day)
+        #expect(await provider.hourlyRequestCount == 1)
+        let nextDay = TripCalendar.calendar(in: zone).date(byAdding: .day, value: 1, to: day)!
+        await service.refresh(location: first, date: nextDay, timeZone: zone, now: day)
+        await service.refresh(location: second, date: day, timeZone: zone, now: day)
+        #expect(await provider.hourlyRequestCount == 3)
+        #expect(await provider.dailyRequestCount == 1)
+    }
+
+    @Test @MainActor func weatherUsesHourlyForCurrentDayDailyForFutureAndClearsOnError() async {
+        let zone = TimeZone(identifier: "Europe/Amsterdam")!
+        let day = TripCalendar.calendar(in: zone).startOfDay(for: .now)
+        let location = TripWeatherLocation(name: "Test", latitude: 52.37, longitude: 4.90, source: .currentLocation)
+        let provider = CountingWeatherProvider(throwsError: false)
+        let service = TripWeatherService(provider: provider, cacheLifetime: 0)
+        await service.refresh(location: location, date: day, timeZone: zone, now: day)
+        #expect(await provider.hourlyRequestCount == 1)
+        #expect(await provider.dailyRequestCount == 0)
+        let future = TripCalendar.calendar(in: zone).date(byAdding: .day, value: 2, to: day)!
+        await service.refresh(location: location, date: future, timeZone: zone, now: day)
+        #expect(await provider.dailyRequestCount == 1)
+
+        let failing = TripWeatherService(provider: CountingWeatherProvider(throwsError: true))
+        await failing.refresh(location: location, date: day, timeZone: zone, now: day)
+        #expect(failing.state == .failed)
+        #expect(failing.hourlyForecast.isEmpty)
+        #expect(failing.dailyForecast == nil)
     }
 
     @Test func timelineBuilderMapsSourcesAndGroupsThailandDays() throws {
@@ -2198,6 +2309,26 @@ private struct WeatherFixtureProvider: TripWeatherProviding {
 
     func hourlyWeather(latitude: Double, longitude: Double) async throws -> [TripHourWeather] {
         forecastsByLatitude[latitude] ?? []
+    }
+}
+
+private actor CountingWeatherProvider: TripWeatherProviding {
+    private(set) var hourlyRequestCount = 0
+    private(set) var dailyRequestCount = 0
+    let throwsError: Bool
+
+    init(throwsError: Bool = false) { self.throwsError = throwsError }
+
+    func hourlyWeather(latitude: Double, longitude: Double) async throws -> [TripHourWeather] {
+        hourlyRequestCount += 1
+        if throwsError { throw URLError(.notConnectedToInternet) }
+        return []
+    }
+
+    func dailyWeather(latitude: Double, longitude: Double) async throws -> [TripDayWeather] {
+        dailyRequestCount += 1
+        if throwsError { throw URLError(.notConnectedToInternet) }
+        return []
     }
 }
 

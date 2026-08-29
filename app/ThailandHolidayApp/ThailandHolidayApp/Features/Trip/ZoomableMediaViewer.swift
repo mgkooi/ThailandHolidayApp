@@ -52,7 +52,7 @@ private final class ZoomingScrollView: UIScrollView, UIScrollViewDelegate {
         super.init(frame: frame)
         delegate = self
         minimumZoomScale = 1
-        maximumZoomScale = 5
+        maximumZoomScale = 8
         bouncesZoom = true
         showsHorizontalScrollIndicator = false
         showsVerticalScrollIndicator = false
@@ -76,11 +76,17 @@ private final class ZoomingScrollView: UIScrollView, UIScrollViewDelegate {
     override func layoutSubviews() {
         super.layoutSubviews()
         guard let size = currentImage?.size, bounds.width > 0, bounds.height > 0 else { return }
+        let previousBounds = imageView.bounds.size
+        let wasAtMinimum = zoomScale <= minimumZoomScale + 0.01
         let fit = min(bounds.width / size.width, bounds.height / size.height)
-        imageView.frame = CGRect(origin: .zero, size: CGSize(width: size.width * fit, height: size.height * fit))
-        contentSize = imageView.frame.size
+        let fittedSize = CGSize(width: size.width * fit, height: size.height * fit)
+        if previousBounds != fittedSize {
+            imageView.frame = CGRect(origin: .zero, size: fittedSize)
+            contentSize = fittedSize
+        }
         minimumZoomScale = 1
-        maximumZoomScale = 5
+        maximumZoomScale = 8
+        if wasAtMinimum { zoomScale = minimumZoomScale }
         centerImage()
     }
 

@@ -141,6 +141,9 @@ absolute instants.
 
 An accommodation is active on `checkInDate <= selectedDay < checkOutDate`: it appears
 on check-in day and each stay night, but not as the current stay on checkout day.
+Its duration is calculated only by `Accommodation.numberOfNights(in:)`: check-in and
+check-out are normalized to local `startOfDay` values before taking the day difference,
+so checkout is never counted as an extra night and time components cannot shift it.
 
 ## Repository and resolution
 
@@ -150,6 +153,17 @@ resolves today's day, destination, accommodation, and next transport outside the
 `TodayDashboardData` and `TimelineItem` are resolved presentation projections, not
 persisted models. `TripTimelineBuilder` combines each domain collection for display,
 while `TimelineSource` retains the item kind and stable source UUID for editing.
+
+Today has a separate, testable presentation order and does not change the chronological
+Reis timeline. Flight, transfer/taxi, ferry, train and rental transport sort first,
+then accommodation, activity, restaurant and other. Within a priority, start or
+departure time is used and untimed items sort last.
+
+Weather cache identity combines rounded coordinates with the selected local forecast
+day. Location resolution prefers accommodation coordinates (or a geocoded address),
+then a coordinate-bearing planned item, current device location and destination.
+The current selected day uses hourly WeatherKit data; future days use daily forecast
+data when available.
 
 ## External API boundary
 

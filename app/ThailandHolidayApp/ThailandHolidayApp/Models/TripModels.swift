@@ -319,7 +319,9 @@ struct Accommodation: Identifiable, Codable, Equatable {
 
     func numberOfNights(in timeZone: TimeZone) -> Int {
         let calendar = TripCalendar.calendar(in: timeZone)
-        return max(0, calendar.dateComponents([.day], from: checkIn, to: checkOut).day ?? 0)
+        let checkInDay = calendar.startOfDay(for: checkIn)
+        let checkOutDay = calendar.startOfDay(for: checkOut)
+        return max(0, calendar.dateComponents([.day], from: checkInDay, to: checkOutDay).day ?? 0)
     }
 
 }

@@ -50,9 +50,7 @@ struct ActivityDetailView: View {
         .fullScreenCover(isPresented: Binding(
             get: { enlargedImage != nil },
             set: { if !$0 { enlargedImage = nil } }
-        )) {
-            if let enlargedImage { AttachmentImageViewer(image: enlargedImage) }
-        }
+        )) { if let enlargedImage { ZoomableMediaViewer(image: enlargedImage) } }
         .onChange(of: selectedPhotoItem) { _, item in
             guard let item else { return }
             Task {
@@ -332,28 +330,5 @@ extension Calendar {
             second: clock.second ?? 0,
             of: day
         ) ?? day
-    }
-}
-
-private struct AttachmentImageViewer: View {
-    @Environment(\.dismiss) private var dismiss
-    let image: UIImage
-
-    var body: some View {
-        NavigationStack {
-            ScrollView([.horizontal, .vertical]) {
-                Image(uiImage: image)
-                    .resizable()
-                    .scaledToFit()
-                    .frame(maxWidth: .infinity, maxHeight: .infinity)
-            }
-            .background(.black)
-            .toolbar {
-                ToolbarItem(placement: .confirmationAction) {
-                    Button("Sluit") { dismiss() }
-                        .foregroundStyle(.white)
-                }
-            }
-        }
     }
 }

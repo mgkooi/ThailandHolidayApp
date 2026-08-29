@@ -6,6 +6,7 @@ struct TodayView: View {
     @Environment(TripWeatherService.self) private var weatherService
     @Environment(DiscoverySession.self) private var discovery
     @Environment(AppNavigationState.self) private var navigationState
+    @Environment(DiscoveryDeviceLocationService.self) private var deviceLocationService
     @Environment(\.locationGeocoder) private var locationGeocoder
     @Environment(\.scenePhase) private var scenePhase
     @State private var selectedDate: Date
@@ -15,6 +16,7 @@ struct TodayView: View {
     @State private var nearbyState: DiscoveryLoadState = .idle
     @State private var navigationDirection = 1
     @State private var coverTarget: ManagedTripItem?
+    @State private var weatherLocation: TripWeatherLocation?
 
     init(selectedDate: Date? = nil, now: () -> Date = Date.init) {
         _selectedDate = State(initialValue: TodayDateSelection.initialDate(selectedDate: selectedDate, now: now()))
@@ -63,7 +65,6 @@ struct TodayView: View {
         let accommodationDestination = accommodation.flatMap { stay in
             stay.destinationID.flatMap { id in trip.destinations.first { $0.id == id } }
         } ?? destination
-        let weatherDestination = destination ?? accommodation.flatMap(weatherDestination(for:))
         let flights = tripStore.flights(on: selectedDate)
         let transfers = tripStore.transfers(on: selectedDate)
         let ferries = tripStore.ferries(on: selectedDate)
@@ -87,10 +88,11 @@ struct TodayView: View {
                     locationAction: openDailyLocationInMap
                 )
 
-                if let weatherDestination {
+                if let weatherLocation {
                     WeatherCard(
-                        destinationName: weatherDestination.name,
+                        destinationName: weatherLocation.name,
                         forecast: weatherService.hourlyForecast,
+                        dailyForecast: weatherService.dailyForecast,
                         state: weatherService.state,
                         timeZone: trip.timeZone
                     )
@@ -108,6 +110,18 @@ struct TodayView: View {
                     }
                 }
 
+                if !flights.isEmpty || !transfers.isEmpty || !ferries.isEmpty || !trains.isEmpty || !rentalVehicles.isEmpty {
+                    sectionHeader("Volgende verplaatsing")
+                    ForEach(TodayItemSorter.sorted(flights.map(ManagedTripItem.flight)
+                        + transfers.map(ManagedTripItem.transfer) + ferries.map(ManagedTripItem.ferry)
+                        + trains.map(ManagedTripItem.train) + rentalVehicles.map(ManagedTripItem.rentalVehicle))) { item in
+                        if case .flight(let flight) = item {
+                            FlightCard(flight: flight, timeZone: trip.timeZone,
+                                       coverAction: { coverTarget = item })
+                        } else { transportCard(item, timeZone: trip.timeZone) }
+                    }
+                }
+
                 if let accommodation {
                     TripStatusCard(destination: accommodationDestination, accommodation: accommodation,
                                    timeZone: trip.timeZone,
@@ -115,18 +129,6 @@ struct TodayView: View {
                 }
 
                 QuickActionsView(accommodation: accommodation, hasFlights: !flights.isEmpty)
-
-                if !flights.isEmpty || !transfers.isEmpty || !ferries.isEmpty || !trains.isEmpty || !rentalVehicles.isEmpty {
-                    sectionHeader("Volgende verplaatsing")
-                    ForEach(flights) { flight in
-                        FlightCard(flight: flight, timeZone: trip.timeZone,
-                                   coverAction: { coverTarget = .flight(flight) })
-                    }
-                    ForEach(transfers) { value in transportCard(.transfer(value), timeZone: trip.timeZone) }
-                    ForEach(trains) { value in transportCard(.train(value), timeZone: trip.timeZone) }
-                    ForEach(ferries) { value in transportCard(.ferry(value), timeZone: trip.timeZone) }
-                    ForEach(rentalVehicles) { value in transportCard(.rentalVehicle(value), timeZone: trip.timeZone) }
-                }
 
                 planningSection(activities: activities, restaurants: restaurants, otherItems: otherItems,
                                 timeZone: trip.timeZone)
@@ -166,38 +168,47 @@ struct TodayView: View {
         }
     }
 
-    private var weatherRequestKey: TripWeatherCacheKey? {
+    private var weatherRequestKey: String? {
         guard let trip = tripStore.trip else { return nil }
-        let destination = tripStore.destination(for: selectedDate)
-            ?? tripStore.accommodation(for: selectedDate).flatMap(weatherDestination(for:))
-        guard let destination else { return nil }
         let day = TripCalendar.calendar(in: trip.timeZone).startOfDay(for: selectedDate)
-        return TripWeatherCacheKey(destinationID: destination.id, day: day)
+        return "\(trip.id)-\(day.timeIntervalSince1970)-\(tripStore.dataRevision)"
     }
 
     private func refreshWeather() async {
         guard let trip = tripStore.trip else { return }
-        let destination = tripStore.destination(for: selectedDate)
-            ?? tripStore.accommodation(for: selectedDate).flatMap(weatherDestination(for:))
-        guard let destination else { return }
-        await weatherService.refresh(destination: destination, date: selectedDate, timeZone: trip.timeZone)
+        let accommodation = tripStore.accommodation(for: selectedDate)
+        var geocodedAccommodation: TripWeatherLocation?
+        if let accommodation, accommodation.latitude == nil || accommodation.longitude == nil {
+            let query = [accommodation.address.nilIfBlank, accommodation.placeName?.nilIfBlank]
+                .compactMap { $0 }.joined(separator: ", ")
+            if let coordinate = try? await locationGeocoder.geocode(address: query) {
+                geocodedAccommodation = TripWeatherLocation(name: accommodation.placeName ?? accommodation.name,
+                    latitude: coordinate.latitude, longitude: coordinate.longitude, source: .accommodationGeocode)
+            }
+        }
+        let planned = plannedItems(on: selectedDate)
+        let contextual = TripWeatherLocationSelector.select(accommodation: accommodation,
+            plannedItems: planned, currentLocation: nil, destination: nil)
+        let isSelectedToday = TripCalendar.calendar(in: trip.timeZone).isDate(selectedDate, inSameDayAs: .now)
+        let current = geocodedAccommodation == nil && contextual == nil && isSelectedToday
+            ? await deviceLocationService.currentLocation() : nil
+        let location = geocodedAccommodation ?? contextual
+            ?? TripWeatherLocationSelector.select(accommodation: nil, plannedItems: [],
+                currentLocation: current, destination: tripStore.destination(for: selectedDate))
+        weatherLocation = location
+        guard let location else { return }
+        await weatherService.refresh(location: location, date: selectedDate, timeZone: trip.timeZone)
     }
 
-    private func weatherDestination(for accommodation: Accommodation) -> Destination? {
-        guard let latitude = accommodation.latitude, let longitude = accommodation.longitude else { return nil }
-        return Destination(
-            id: accommodation.id,
-            name: accommodation.placeName ?? accommodation.name,
-            country: tripStore.trip?.country ?? "Thailand",
-            region: accommodation.placeName ?? "",
-            arrivalDate: accommodation.checkIn,
-            departureDate: accommodation.checkOut,
-            latitude: latitude,
-            longitude: longitude,
-            description: nil,
-            imageReference: nil,
-            notes: nil
-        )
+    private func plannedItems(on date: Date) -> [ManagedTripItem] {
+        tripStore.flights(on: date).map(ManagedTripItem.flight)
+            + tripStore.transfers(on: date).map(ManagedTripItem.transfer)
+            + tripStore.ferries(on: date).map(ManagedTripItem.ferry)
+            + tripStore.trains(on: date).map(ManagedTripItem.train)
+            + tripStore.rentalVehicles(on: date).map(ManagedTripItem.rentalVehicle)
+            + tripStore.activities(on: date).map(ManagedTripItem.activity)
+            + tripStore.restaurants(on: date).map(ManagedTripItem.restaurant)
+            + tripStore.otherItems(on: date).map(ManagedTripItem.other)
     }
 
     private func moveSelectedDate(by dayOffset: Int, in trip: Trip) {
@@ -222,9 +233,10 @@ struct TodayView: View {
                 .background(.background, in: RoundedRectangle(cornerRadius: 20))
             } else {
                 LazyVStack(spacing: 14) {
-                    ForEach(activities) { value in planningCard(.activity(value), timeZone: timeZone) }
-                    ForEach(restaurants) { value in planningCard(.restaurant(value), timeZone: timeZone) }
-                    ForEach(otherItems) { value in planningCard(.other(value), timeZone: timeZone) }
+                    ForEach(TodayItemSorter.sorted(activities.map(ManagedTripItem.activity)
+                        + restaurants.map(ManagedTripItem.restaurant) + otherItems.map(ManagedTripItem.other))) { item in
+                        planningCard(item, timeZone: timeZone)
+                    }
                 }
             }
         }
@@ -394,12 +406,14 @@ struct TodaySwipeNavigation {
 private struct TodayPreview: View {
     @State private var tripStore = TripStore()
     @State private var weatherService = TripWeatherService(provider: PreviewWeatherProvider())
+    @State private var locationService = DiscoveryDeviceLocationService()
     let selectedDate: Date
 
     var body: some View {
         TodayView(selectedDate: selectedDate)
             .environment(tripStore)
             .environment(weatherService)
+            .environment(locationService)
             .task { tripStore.loadIfNeeded() }
     }
 }
