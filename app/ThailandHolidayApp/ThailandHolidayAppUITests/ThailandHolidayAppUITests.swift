@@ -43,6 +43,15 @@ final class ThailandHolidayAppUITests: XCTestCase {
     }
 
     @MainActor
+    func testWeatherFailureShowsCompactDomainAndCode() throws {
+        let app = launchIsolatedApp(extraArguments: ["--ui-weather-error-code"])
+        XCTAssertEqual(app.descendants(matching: .any)["weatherDiagnosis"].label,
+                       "Diagnose: weatherKitServiceError")
+        XCTAssertEqual(app.descendants(matching: .any)["weatherDiagnosticCode"].label,
+                       "Code: WeatherKit.WeatherError/2")
+    }
+
+    @MainActor
     func testWeatherOutOfRangeAndTodaySectionOrder() throws {
         let app = XCUIApplication()
         app.launchArguments = ["--ui-testing", "--ui-testing-reset", "--ui-weather-out-of-range"]

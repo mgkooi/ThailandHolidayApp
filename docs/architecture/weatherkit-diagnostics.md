@@ -4,8 +4,14 @@
 `notConfigured`, `entitlementMissing`, `authorizationFailed`, `locationUnavailable`, `dateOutOfRange`,
 `noForecastData`, `network`, `weatherKitServiceError`, or `unknown`.
 
-Weather logs contain the provider, location source, coordinates rounded to two decimals, forecast date,
-request result, category, and safe error domain/code. Exact coordinates and error descriptions are not logged.
+Weather logs contain the provider, location source, forecast date, request result, category, and safe error
+domain/code. Coordinates and secrets are not logged.
+
+Diagnostic builds capture the concrete Swift error type, NSError domain/code, `WeatherError` case where
+available, and short non-sensitive failure/recovery text. After a request error the native provider probes
+`current`, `hourly`, and `daily` separately and logs only success/failure plus error metadata per dataset.
+`WeatherDaemon.WDSJWTAuthenticatorServiceListener.Errors` is classified as `authorizationFailed` because it
+originates in WeatherKit's JWT authentication layer.
 
 The daily forecast horizon is treated as ten days including today. A date outside today through day +9 is
 reported as “Nog geen weersverwachting beschikbaar voor deze datum” and does not issue a WeatherKit request.

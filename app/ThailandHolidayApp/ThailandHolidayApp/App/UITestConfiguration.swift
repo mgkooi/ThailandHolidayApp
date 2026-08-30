@@ -11,14 +11,16 @@ enum UITestConfiguration {
     static var selectedDate: Date? {
         guard isEnabled else { return nil }
         if ProcessInfo.processInfo.arguments.contains("--ui-weather-out-of-range")
-            || ProcessInfo.processInfo.arguments.contains("--ui-weather-no-data") {
+            || ProcessInfo.processInfo.arguments.contains("--ui-weather-no-data")
+            || ProcessInfo.processInfo.arguments.contains("--ui-weather-error-code") {
             return TripCalendar.date(2026, 9, 9, hour: 12)
         }
         return TripCalendar.date(2026, 9, 6, hour: 12)
     }
 
     static var weatherNow: Date? {
-        guard isEnabled, ProcessInfo.processInfo.arguments.contains("--ui-weather-no-data") else { return nil }
+        guard isEnabled, ProcessInfo.processInfo.arguments.contains("--ui-weather-no-data")
+                || ProcessInfo.processInfo.arguments.contains("--ui-weather-error-code") else { return nil }
         return TripCalendar.date(2026, 9, 9, hour: 12)
     }
 
@@ -32,6 +34,11 @@ enum UITestConfiguration {
 }
 
 struct UITestWeatherProvider: TripWeatherProviding {
-    func hourlyWeather(latitude: Double, longitude: Double) async throws -> [TripHourWeather] { [] }
+    func hourlyWeather(latitude: Double, longitude: Double) async throws -> [TripHourWeather] {
+        if ProcessInfo.processInfo.arguments.contains("--ui-weather-error-code") {
+            throw NSError(domain: "WeatherKit.WeatherError", code: 2)
+        }
+        return []
+    }
     func dailyWeather(latitude: Double, longitude: Double) async throws -> [TripDayWeather] { [] }
 }

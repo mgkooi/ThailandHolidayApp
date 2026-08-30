@@ -3,6 +3,7 @@ import MapKit
 import SwiftUI
 import Testing
 import UIKit
+import WeatherKit
 @testable import ThailandHolidayApp
 
 struct ThailandHolidayAppTests {
@@ -469,6 +470,54 @@ struct ThailandHolidayAppTests {
         #expect(WeatherErrorClassifier.category(for: TripWeatherProviderError(.entitlementMissing)) == .entitlementMissing)
         #expect(WeatherErrorClassifier.category(for: TripWeatherProviderError(.notConfigured)) == .notConfigured)
         #expect(WeatherErrorClassifier.category(for: URLError(.notConnectedToInternet)) == .network)
+        #expect(WeatherErrorClassifier.category(for: WeatherKit.WeatherError.permissionDenied) == .authorizationFailed)
+        #expect(WeatherErrorClassifier.category(for: WeatherKit.WeatherError.unknown) == .weatherKitServiceError)
+        #expect(WeatherErrorClassifier.category(for: NSError(
+            domain: "WeatherDaemon.WDSJWTAuthenticatorServiceListener.Errors", code: 2)) == .authorizationFailed)
+    }
+
+    @Test func weatherErrorDetailsCaptureSafeConcreteMetadata() {
+        let details = WeatherErrorDetails(error: WeatherKit.WeatherError.permissionDenied)
+        #expect(details.errorType.contains("WeatherError"))
+        #expect(!details.domain.isEmpty)
+        #expect(details.weatherErrorCase == "permissionDenied")
+        #expect(details.compactCode == "\(details.domain)/\(details.code)")
+    }
+
+    @Test @MainActor func diagnosticFailureProbesCurrentHourlyAndDailySeparately() async {
+        let zone = TimeZone(identifier: "Asia/Bangkok")!
+        let now = TripCalendar.date(2026, 9, 4, hour: 9)
+        let provider = DiagnosticWeatherProvider()
+        let service = TripWeatherService(provider: provider, cacheLifetime: 0)
+        let bangkok = TripWeatherLocation(name: "Bangkok", latitude: 13.7563, longitude: 100.5018,
+                                          source: .destination)
+
+        await service.refresh(location: bangkok, date: now, timeZone: zone, now: now)
+
+        #expect(service.state == .failed)
+        #expect(service.errorCategory == .weatherKitServiceError)
+        #expect(service.errorDetails?.domain == "WeatherKit.WeatherError")
+        #expect(service.errorDetails?.code == 2)
+        #expect(service.diagnosticProbeResults == ["current": true, "hourly": false, "daily": true])
+    }
+
+    @Test @MainActor func bangkokForecastScenariosSelectCurrentAndValidFutureDays() async {
+        let zone = TimeZone(identifier: "Asia/Bangkok")!
+        let today = TripCalendar.date(2026, 8, 30, hour: 9)
+        let tomorrow = TripCalendar.date(2026, 8, 31, hour: 9)
+        let septemberFourth = TripCalendar.date(2026, 9, 4, hour: 9)
+        let location = TripWeatherLocation(name: "Bangkok", latitude: 13.7563, longitude: 100.5018,
+                                           source: .destination)
+        let provider = ScenarioWeatherProvider(today: today, tomorrow: tomorrow, future: septemberFourth)
+        let service = TripWeatherService(provider: provider, cacheLifetime: 0)
+
+        await service.refresh(location: location, date: today, timeZone: zone, now: today)
+        #expect(service.state == .available)
+        #expect(!service.hourlyForecast.isEmpty)
+        await service.refresh(location: location, date: tomorrow, timeZone: zone, now: today)
+        #expect(service.dailyForecast?.date == tomorrow)
+        await service.refresh(location: location, date: septemberFourth, timeZone: zone, now: today)
+        #expect(service.dailyForecast?.date == septemberFourth)
     }
 
     @Test @MainActor func validFutureWeatherDayUsesDailyForecast() async {
@@ -2380,6 +2429,37 @@ private struct DailyWeatherFixtureProvider: TripWeatherProviding {
 
     func hourlyWeather(latitude: Double, longitude: Double) async throws -> [TripHourWeather] { [] }
     func dailyWeather(latitude: Double, longitude: Double) async throws -> [TripDayWeather] { [forecast] }
+}
+
+private struct DiagnosticWeatherProvider: TripWeatherDiagnosticProbing {
+    func currentWeather(latitude: Double, longitude: Double) async throws {}
+
+    func hourlyWeather(latitude: Double, longitude: Double) async throws -> [TripHourWeather] {
+        throw NSError(domain: "WeatherKit.WeatherError", code: 2, userInfo: [
+            NSLocalizedFailureReasonErrorKey: "Weather service returned an unknown error."
+        ])
+    }
+
+    func dailyWeather(latitude: Double, longitude: Double) async throws -> [TripDayWeather] { [] }
+}
+
+private struct ScenarioWeatherProvider: TripWeatherProviding {
+    let today: Date
+    let tomorrow: Date
+    let future: Date
+
+    func hourlyWeather(latitude: Double, longitude: Double) async throws -> [TripHourWeather] {
+        [today, today.addingTimeInterval(3_600), today.addingTimeInterval(7_200)].map {
+            TripHourWeather(date: $0, temperatureCelsius: 31, symbolName: "sun.max")
+        }
+    }
+
+    func dailyWeather(latitude: Double, longitude: Double) async throws -> [TripDayWeather] {
+        [tomorrow, future].map {
+            TripDayWeather(date: $0, highTemperatureCelsius: 33, lowTemperatureCelsius: 27,
+                           symbolName: "cloud.sun", precipitationChance: 0.2)
+        }
+    }
 }
 
 private actor CountingWeatherProvider: TripWeatherProviding {

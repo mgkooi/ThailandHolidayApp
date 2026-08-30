@@ -6,6 +6,7 @@ struct WeatherCard: View {
     let dailyForecast: TripDayWeather?
     let state: TripWeatherState
     let errorCategory: WeatherErrorCategory?
+    let errorDetails: WeatherErrorDetails?
     let timeZone: TimeZone
 
     private var diagnosticsEnabled: Bool {
@@ -98,6 +99,13 @@ struct WeatherCard: View {
                 .font(.caption2)
                 .foregroundStyle(.tertiary)
                 .accessibilityIdentifier("weatherDiagnosis")
+            if let errorDetails {
+                Text("Code: \(errorDetails.compactCode)")
+                    .font(.caption2.monospaced())
+                    .foregroundStyle(.tertiary)
+                    .lineLimit(1)
+                    .accessibilityIdentifier("weatherDiagnosticCode")
+            }
         }
     }
 }

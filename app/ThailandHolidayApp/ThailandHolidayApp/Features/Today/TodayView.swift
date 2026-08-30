@@ -93,6 +93,7 @@ struct TodayView: View {
                             dailyForecast: weatherService.dailyForecast,
                             state: weatherService.state,
                             errorCategory: weatherService.errorCategory,
+                            errorDetails: weatherService.errorDetails,
                             timeZone: trip.timeZone
                         )
                         .accessibilityIdentifier("todayWeatherCard")
