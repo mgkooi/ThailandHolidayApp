@@ -34,6 +34,33 @@ final class ThailandHolidayAppUITests: XCTestCase {
     }
 
     @MainActor
+    func testWeatherUnavailableCardShowsInternalDiagnosis() throws {
+        let app = launchIsolatedApp(extraArguments: ["--ui-weather-no-data"])
+        let primary = app.descendants(matching: .any)["weatherPrimary"]
+        XCTAssertTrue(primary.waitForExistence(timeout: 8), "Weather card primary text ontbreekt")
+        XCTAssertEqual(primary.label, "Nog geen weersverwachting beschikbaar")
+        XCTAssertEqual(app.descendants(matching: .any)["weatherDiagnosis"].label, "Diagnose: noForecastData")
+    }
+
+    @MainActor
+    func testWeatherOutOfRangeAndTodaySectionOrder() throws {
+        let app = XCUIApplication()
+        app.launchArguments = ["--ui-testing", "--ui-testing-reset", "--ui-weather-out-of-range"]
+        app.launch()
+        XCTAssertTrue(app.staticTexts["Nog geen weersverwachting beschikbaar voor deze datum"].waitForExistence(timeout: 8))
+        XCTAssertEqual(app.descendants(matching: .any)["weatherDiagnosis"].label, "Diagnose: dateOutOfRange")
+
+        let transport = app.descendants(matching: .any)["todaySection.transport"]
+        let accommodation = app.descendants(matching: .any)["todaySection.accommodation"]
+        if transport.exists && accommodation.exists {
+            XCTAssertLessThan(transport.frame.minY, accommodation.frame.minY)
+        }
+        app.swipeUp(velocity: .fast)
+        app.swipeUp(velocity: .fast)
+        XCTAssertTrue(app.descendants(matching: .any)["todayScrollableContent"].exists)
+    }
+
+    @MainActor
     func testAccommodationCreatedInReisAppearsImmediatelyInVandaag() throws {
         let app = launchIsolatedApp()
         app.tabBars.buttons["Reis"].tap()

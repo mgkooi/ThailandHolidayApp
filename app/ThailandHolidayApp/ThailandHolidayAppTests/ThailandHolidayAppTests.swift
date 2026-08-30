@@ -407,12 +407,13 @@ struct ThailandHolidayAppTests {
         ])
         let service = TripWeatherService(provider: provider)
 
-        await service.refresh(destination: firstDestination, date: day, timeZone: trip.timeZone)
+        await service.refresh(destination: firstDestination, date: day, timeZone: trip.timeZone, now: day)
         #expect(service.state == .available)
         #expect(service.hourlyForecast.count == 4)
 
-        await service.refresh(destination: secondDestination, date: day, timeZone: trip.timeZone)
+        await service.refresh(destination: secondDestination, date: day, timeZone: trip.timeZone, now: day)
         #expect(service.state == .unavailable)
+        #expect(service.errorCategory == .noForecastData)
         #expect(service.hourlyForecast.isEmpty)
         #expect(service.errorMessage == nil)
     }
@@ -425,12 +426,53 @@ struct ThailandHolidayAppTests {
         await service.refresh(
             destination: destination,
             date: TripCalendar.date(2026, 9, 9),
-            timeZone: trip.timeZone
+            timeZone: trip.timeZone,
+            now: TripCalendar.date(2026, 9, 9)
         )
 
-        #expect(service.state == .unavailable)
+        #expect(service.state == .failed)
+        #expect(service.errorCategory == .notConfigured)
         #expect(service.hourlyForecast.isEmpty)
+        #expect(service.errorMessage == "Weer tijdelijk niet beschikbaar")
+    }
+
+    @Test @MainActor func weatherDateOutsideForecastHorizonIsNotATechnicalFailure() async {
+        let zone = TimeZone(identifier: "Asia/Bangkok")!
+        let now = TripCalendar.date(2026, 8, 30, hour: 12)
+        let septemberNinth = TripCalendar.date(2026, 9, 9, hour: 12)
+        let provider = CountingWeatherProvider()
+        let service = TripWeatherService(provider: provider)
+        let location = TripWeatherLocation(name: "Khao Sok", latitude: 8.91, longitude: 98.53, source: .destination)
+
+        await service.refresh(location: location, date: septemberNinth, timeZone: zone, now: now)
+
+        #expect(service.state == .unavailable)
+        #expect(service.errorCategory == .dateOutOfRange)
         #expect(service.errorMessage == nil)
+        #expect(await provider.hourlyRequestCount == 0)
+    }
+
+    @Test func weatherErrorsMapToDiagnosticCategories() {
+        #expect(WeatherErrorClassifier.category(for: TripWeatherProviderError(.authorizationFailed)) == .authorizationFailed)
+        #expect(WeatherErrorClassifier.category(for: TripWeatherProviderError(.entitlementMissing)) == .entitlementMissing)
+        #expect(WeatherErrorClassifier.category(for: TripWeatherProviderError(.notConfigured)) == .notConfigured)
+        #expect(WeatherErrorClassifier.category(for: URLError(.notConnectedToInternet)) == .network)
+    }
+
+    @Test @MainActor func validFutureWeatherDayUsesDailyForecast() async {
+        let zone = TimeZone(identifier: "Asia/Bangkok")!
+        let now = TripCalendar.date(2026, 8, 30, hour: 12)
+        let future = TripCalendar.date(2026, 9, 8, hour: 12)
+        let daily = TripDayWeather(date: future, highTemperatureCelsius: 31, lowTemperatureCelsius: 25,
+                                   symbolName: "cloud.rain", precipitationChance: 0.4)
+        let service = TripWeatherService(provider: DailyWeatherFixtureProvider(forecast: daily))
+        let location = TripWeatherLocation(name: "Khao Sok", latitude: 8.91, longitude: 98.53, source: .destination)
+
+        await service.refresh(location: location, date: future, timeZone: zone, now: now)
+
+        #expect(service.state == .available)
+        #expect(service.dailyForecast == daily)
+        #expect(service.errorCategory == nil)
     }
 
     @Test @MainActor func weatherCacheSeparatesLocationAndSelectedLocalDate() async {
@@ -2310,6 +2352,13 @@ private struct WeatherFixtureProvider: TripWeatherProviding {
     func hourlyWeather(latitude: Double, longitude: Double) async throws -> [TripHourWeather] {
         forecastsByLatitude[latitude] ?? []
     }
+}
+
+private struct DailyWeatherFixtureProvider: TripWeatherProviding {
+    let forecast: TripDayWeather
+
+    func hourlyWeather(latitude: Double, longitude: Double) async throws -> [TripHourWeather] { [] }
+    func dailyWeather(latitude: Double, longitude: Double) async throws -> [TripDayWeather] { [forecast] }
 }
 
 private actor CountingWeatherProvider: TripWeatherProviding {

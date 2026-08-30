@@ -3,7 +3,7 @@ import SwiftUI
 @main
 struct ThailandHolidayAppApp: App {
     @State private var tripStore: TripStore
-    @State private var weatherService = TripWeatherService()
+    @State private var weatherService: TripWeatherService
     @State private var startupCoordinator = AppStartupCoordinator()
     @State private var navigationState = AppNavigationState()
     @State private var discoverySession: DiscoverySession
@@ -13,6 +13,8 @@ struct ThailandHolidayAppApp: App {
     init() {
         UITestConfiguration.resetDocumentsIfRequested()
         _tripStore = State(initialValue: TripStore(documentsDirectory: UITestConfiguration.documentsDirectory))
+        _weatherService = State(initialValue: UITestConfiguration.isEnabled
+            ? TripWeatherService(provider: UITestWeatherProvider()) : TripWeatherService())
         let geocoder: any LocationGeocoding = UITestConfiguration.isEnabled
             ? UITestLocationGeocodingService() : LocationGeocodingService()
         let discovery: any LocalDiscoverySearching = UITestConfiguration.isEnabled

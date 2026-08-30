@@ -5,14 +5,29 @@ struct WeatherCard: View {
     let forecast: [TripHourWeather]
     let dailyForecast: TripDayWeather?
     let state: TripWeatherState
+    let errorCategory: WeatherErrorCategory?
     let timeZone: TimeZone
 
+    private var diagnosticsEnabled: Bool {
+#if DEBUG
+        true
+#else
+        Bundle.main.object(forInfoDictionaryKey: "WeatherDiagnosticsEnabled") as? Bool == true
+#endif
+    }
+
     var body: some View {
-        VStack(alignment: .leading, spacing: 16) {
+        VStack(alignment: .leading, spacing: 10) {
             HStack {
-                Label("Weer · \(destinationName)", systemImage: "cloud.sun.fill")
-                    .font(.headline)
-                    .foregroundStyle(Color.travelTeal)
+                Image(systemName: weatherSymbol)
+                    .font(.title2)
+                    .symbolRenderingMode(.multicolor)
+                    .frame(width: 34)
+                VStack(alignment: .leading, spacing: 2) {
+                    Text(primaryText).font(.title3.bold()).monospacedDigit()
+                        .accessibilityIdentifier("weatherPrimary")
+                    Text(destinationName).font(.caption).foregroundStyle(.secondary).lineLimit(1)
+                }
                 Spacer()
                 Link(" Weather", destination: URL(string: "https://weatherkit.apple.com/legal-attribution.html")!)
                     .font(.caption2)
@@ -21,23 +36,10 @@ struct WeatherCard: View {
 
             switch state {
             case .loading, .idle:
-                HStack {
-                    Spacer()
-                    ProgressView()
-                        .controlSize(.small)
-                    Spacer()
-                }
-                .frame(minHeight: 70)
+                ProgressView().controlSize(.small)
             case .available:
                 if let dailyForecast {
-                    HStack(spacing: 14) {
-                        Image(systemName: dailyForecast.symbolName)
-                            .font(.title2).symbolRenderingMode(.multicolor)
-                        Text("\(TripWeatherSelector.celsiusText(dailyForecast.lowTemperatureCelsius)) – \(TripWeatherSelector.celsiusText(dailyForecast.highTemperatureCelsius))")
-                            .font(.headline.monospacedDigit())
-                        Spacer()
-                        precipitation(dailyForecast.precipitationChance)
-                    }
+                    precipitation(dailyForecast.precipitationChance)
                 } else { HStack(spacing: 8) {
                     ForEach(forecast) { hour in
                         VStack(spacing: 9) {
@@ -56,16 +58,13 @@ struct WeatherCard: View {
                     }
                 } }
             case .unavailable:
-                unavailableMessage(
-                    title: "Weersverwachting niet beschikbaar",
-                    detail: nil
-                )
+                diagnosticText
             case .failed:
-                unavailableMessage(title: "Weer tijdelijk niet beschikbaar", detail: nil)
+                diagnosticText
             }
         }
-        .padding(18)
-        .background(.background, in: RoundedRectangle(cornerRadius: 20))
+        .padding(14)
+        .background(.thinMaterial, in: RoundedRectangle(cornerRadius: 18, style: .continuous))
         .travelCardShadow()
         .accessibilityElement(children: .contain)
     }
@@ -78,11 +77,25 @@ struct WeatherCard: View {
         }
     }
 
-    private func unavailableMessage(title: String, detail: String?) -> some View {
-        VStack(alignment: .leading, spacing: 4) {
-            Text(title).font(.subheadline.weight(.semibold))
-            if let detail { Text(detail).font(.caption).foregroundStyle(.secondary) }
+    private var weatherSymbol: String {
+        dailyForecast?.symbolName ?? forecast.first?.symbolName ?? (state == .failed ? "exclamationmark.icloud" : "cloud.sun")
+    }
+
+    private var primaryText: String {
+        if let dailyForecast { return "\(TripWeatherSelector.celsiusText(dailyForecast.highTemperatureCelsius))" }
+        if let current = forecast.first { return TripWeatherSelector.celsiusText(current.temperatureCelsius) }
+        if errorCategory == .dateOutOfRange { return "Nog geen weersverwachting beschikbaar voor deze datum" }
+        if state == .failed { return "Weer tijdelijk niet beschikbaar" }
+        if state == .unavailable { return "Nog geen weersverwachting beschikbaar" }
+        return "Weer laden…"
+    }
+
+    @ViewBuilder private var diagnosticText: some View {
+        if diagnosticsEnabled, let errorCategory {
+            Text("Diagnose: \(errorCategory.rawValue)")
+                .font(.caption2)
+                .foregroundStyle(.tertiary)
+                .accessibilityIdentifier("weatherDiagnosis")
         }
-        .frame(maxWidth: .infinity, minHeight: 58, alignment: .leading)
     }
 }

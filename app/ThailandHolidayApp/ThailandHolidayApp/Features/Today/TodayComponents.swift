@@ -12,10 +12,10 @@ struct TodayHeader: View {
     let locationAction: () -> Void
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 5) {
+        VStack(alignment: .leading, spacing: 4) {
             Text("Vandaag")
                 .font(.largeTitle.bold())
-            HStack(spacing: 12) {
+            HStack(spacing: 6) {
                 dateNavigationButton(
                     symbol: "chevron.left",
                     label: "Vorige reisdag",
@@ -25,7 +25,7 @@ struct TodayHeader: View {
                 Spacer()
                 Button(action: dateAction) {
                     Text(AppFormatters.dutchDate(in: timeZone).string(from: date).capitalized)
-                        .font(.headline).foregroundStyle(.secondary).multilineTextAlignment(.center)
+                        .font(.subheadline.weight(.semibold)).foregroundStyle(.secondary).multilineTextAlignment(.center)
                 }
                 .accessibilityLabel("Kies datum")
                 Spacer()
@@ -61,7 +61,7 @@ struct TodayHeader: View {
         Button(action: action) {
             Image(systemName: symbol)
                 .font(.headline.weight(.semibold))
-                .frame(width: 44, height: 44)
+                .frame(width: 36, height: 36)
                 .contentShape(Rectangle())
         }
         .buttonStyle(.plain)
@@ -96,7 +96,7 @@ struct TodayActionButton: View {
         Image(systemName: symbol)
             .font(.body.weight(.semibold))
             .foregroundStyle(.white)
-            .frame(width: 44, height: 44)
+            .frame(width: 38, height: 38)
             .background(.ultraThinMaterial, in: Circle())
             .overlay { Circle().stroke(.white.opacity(0.24), lineWidth: 0.5) }
             .contentShape(Circle())
@@ -106,11 +106,11 @@ struct TodayActionButton: View {
 struct TodayHeroCard<Content: View, Actions: View>: View {
     let kind: TripItemKind
     let media: TripMedia?
-    var minimumHeight: CGFloat = 220
+    var minimumHeight: CGFloat = 196
     let content: Content
     let actions: Actions
 
-    init(kind: TripItemKind, media: TripMedia?, minimumHeight: CGFloat = 220,
+    init(kind: TripItemKind, media: TripMedia?, minimumHeight: CGFloat = 196,
          @ViewBuilder content: () -> Content, @ViewBuilder actions: () -> Actions) {
         self.kind = kind
         self.media = media
@@ -124,16 +124,16 @@ struct TodayHeroCard<Content: View, Actions: View>: View {
             background
             LinearGradient(colors: [.black.opacity(media == nil ? 0.05 : 0.18), .black.opacity(0.86)],
                            startPoint: .top, endPoint: .bottom)
-            VStack(alignment: .leading, spacing: 12) {
+            VStack(alignment: .leading, spacing: 9) {
                 content
                 HStack(spacing: 10) { actions }
             }
-            .padding(18)
+            .padding(15)
         }
         .frame(maxWidth: .infinity, minHeight: minimumHeight, alignment: .bottomLeading)
         .foregroundStyle(.white)
-        .clipShape(RoundedRectangle(cornerRadius: 22, style: .continuous))
-        .contentShape(RoundedRectangle(cornerRadius: 22, style: .continuous))
+        .clipShape(RoundedRectangle(cornerRadius: 20, style: .continuous))
+        .contentShape(RoundedRectangle(cornerRadius: 20, style: .continuous))
         .travelCardShadow()
         .accessibilityElement(children: .contain)
         .accessibilityIdentifier("todayHeroCard.\(kind.rawValue)")
@@ -273,7 +273,7 @@ struct FlightCard: View {
     var coverAction: () -> Void = {}
 
     var body: some View {
-        TodayHeroCard(kind: .flight, media: flight.presentationMedia, minimumHeight: 240) {
+        TodayHeroCard(kind: .flight, media: flight.presentationMedia, minimumHeight: 210) {
             HStack {
                 Label("Vlucht", systemImage: "airplane")
                     .font(.headline)
@@ -376,7 +376,7 @@ struct TodayTransportCard: View {
     let coverAction: () -> Void
 
     var body: some View {
-        TodayHeroCard(kind: item.kind, media: item.presentationMedia, minimumHeight: 220) {
+        TodayHeroCard(kind: item.kind, media: item.presentationMedia, minimumHeight: 188) {
             Label(item.kind.title, systemImage: item.kind.symbolName).font(.headline)
             if !operatorName.isEmpty { Text(operatorName).font(.title3.bold()) }
             HStack(spacing: 12) {
@@ -427,7 +427,7 @@ struct TodayPlanningCard: View {
     let coverAction: () -> Void
 
     var body: some View {
-        TodayHeroCard(kind: item.kind, media: item.presentationMedia, minimumHeight: 184) {
+        TodayHeroCard(kind: item.kind, media: item.presentationMedia, minimumHeight: 174) {
             Label(item.kind.title, systemImage: item.kind.symbolName).font(.caption.bold())
             Text(title).font(.title3.bold())
             if let time { Text(time).font(.subheadline.monospacedDigit().weight(.semibold)) }

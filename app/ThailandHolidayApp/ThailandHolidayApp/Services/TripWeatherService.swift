@@ -28,6 +28,58 @@ enum TripWeatherState: Equatable {
     case failed
 }
 
+enum WeatherErrorCategory: String, Equatable, Sendable {
+    case notConfigured
+    case entitlementMissing
+    case authorizationFailed
+    case locationUnavailable
+    case dateOutOfRange
+    case noForecastData
+    case network
+    case weatherKitServiceError
+    case unknown
+}
+
+struct TripWeatherProviderError: Error, Sendable {
+    let category: WeatherErrorCategory
+    let domain: String
+    let code: Int
+
+    init(_ category: WeatherErrorCategory, domain: String = "TripWeather", code: Int = 0) {
+        self.category = category
+        self.domain = domain
+        self.code = code
+    }
+}
+
+enum WeatherErrorClassifier {
+    static func category(for error: Error) -> WeatherErrorCategory {
+        if let error = error as? TripWeatherProviderError { return error.category }
+        let nsError = error as NSError
+        if nsError.domain == NSURLErrorDomain { return .network }
+
+        let domain = nsError.domain.lowercased()
+        let description = String(describing: error).lowercased()
+        if description.contains("entitlement") { return .entitlementMissing }
+        if description.contains("authoriz") || description.contains("permission") { return .authorizationFailed }
+        if domain.contains("weather") { return .weatherKitServiceError }
+        return .unknown
+    }
+}
+
+enum TripWeatherAvailability {
+    /// WeatherKit's daily forecast represents today plus the following nine days.
+    static let forecastDayCount = 10
+
+    static func isWithinForecastHorizon(date: Date, now: Date, timeZone: TimeZone) -> Bool {
+        let calendar = TripCalendar.calendar(in: timeZone)
+        let requestedDay = calendar.startOfDay(for: date)
+        let today = calendar.startOfDay(for: now)
+        guard let difference = calendar.dateComponents([.day], from: today, to: requestedDay).day else { return false }
+        return difference >= 0 && difference < forecastDayCount
+    }
+}
+
 protocol TripWeatherProviding: Sendable {
     func hourlyWeather(latitude: Double, longitude: Double) async throws -> [TripHourWeather]
     func dailyWeather(latitude: Double, longitude: Double) async throws -> [TripDayWeather]
@@ -68,7 +120,7 @@ struct AppleTripWeatherProvider: TripWeatherProviding {
 /// the WeatherKit entitlement at runtime.
 struct UnavailableTripWeatherProvider: TripWeatherProviding {
     func hourlyWeather(latitude: Double, longitude: Double) async throws -> [TripHourWeather] {
-        []
+        throw TripWeatherProviderError(.notConfigured)
     }
 }
 
@@ -135,6 +187,7 @@ final class TripWeatherService {
         let forecast: [TripHourWeather]
         let dailyForecast: TripDayWeather?
         let state: TripWeatherState
+        let errorCategory: WeatherErrorCategory?
         let fetchedAt: Date
     }
 
@@ -146,6 +199,7 @@ final class TripWeatherService {
     private(set) var hourlyForecast: [TripHourWeather] = []
     private(set) var dailyForecast: TripDayWeather?
     private(set) var state: TripWeatherState = .idle
+    private(set) var errorCategory: WeatherErrorCategory?
 
     var isLoading: Bool { state == .loading }
     var errorMessage: String? { state == .failed ? "Weer tijdelijk niet beschikbaar" : nil }
@@ -184,10 +238,18 @@ final class TripWeatherService {
         activeKey = key
         hourlyForecast = []
         dailyForecast = nil
+        errorCategory = nil
         state = .loading
-#if DEBUG
-        Self.logger.debug("Weather location source=\(location.source.rawValue, privacy: .public) lat=\(location.latitude, format: .fixed(precision: 2), privacy: .public) lon=\(location.longitude, format: .fixed(precision: 2), privacy: .public) date=\(day, privacy: .public); request started")
-#endif
+        Self.logger.info("provider=WeatherKit locationSource=\(location.source.rawValue, privacy: .public) lat=\(location.latitude, format: .fixed(precision: 2), privacy: .public) lon=\(location.longitude, format: .fixed(precision: 2), privacy: .public) forecastDate=\(day, privacy: .public) request=started")
+
+        guard TripWeatherAvailability.isWithinForecastHorizon(date: date, now: now, timeZone: timeZone) else {
+            let entry = CacheEntry(forecast: [], dailyForecast: nil, state: .unavailable,
+                                   errorCategory: .dateOutOfRange, fetchedAt: now)
+            cache[key] = entry
+            apply(entry, key: key)
+            Self.logger.notice("provider=WeatherKit request=skipped category=\(WeatherErrorCategory.dateOutOfRange.rawValue, privacy: .public)")
+            return
+        }
 
         do {
             let isToday = calendar.isDate(date, inSameDayAs: now)
@@ -198,22 +260,24 @@ final class TripWeatherService {
                 ? TripWeatherSelector.selectCurrent(from: available, now: now, timeZone: timeZone)
                 : TripWeatherSelector.select(from: available, for: date, timeZone: timeZone)
             dailyForecast = availableDays.first { calendar.isDate($0.date, inSameDayAs: date) }
-            let resultingState: TripWeatherState = (!selected.isEmpty || dailyForecast != nil) ? .available : .unavailable
+            let hasForecast = !selected.isEmpty || dailyForecast != nil
+            let resultingState: TripWeatherState = hasForecast ? .available : .unavailable
             let entry = CacheEntry(forecast: selected, dailyForecast: dailyForecast,
-                                   state: resultingState, fetchedAt: now)
+                                   state: resultingState, errorCategory: hasForecast ? nil : .noForecastData,
+                                   fetchedAt: now)
             cache[key] = entry
             apply(entry, key: key)
-#if DEBUG
-            Self.logger.debug("WeatherKit request succeeded state=\(String(describing: resultingState), privacy: .public)")
-#endif
+            Self.logger.info("provider=WeatherKit request=succeeded state=\(String(describing: resultingState), privacy: .public) category=\(entry.errorCategory?.rawValue ?? "none", privacy: .public)")
         } catch is CancellationError {
             return
         } catch {
             guard activeKey == key else { return }
             hourlyForecast = []
             dailyForecast = nil
+            let nsError = error as NSError
+            errorCategory = WeatherErrorClassifier.category(for: error)
             state = .failed
-            Self.logger.error("WeatherKit request failed category=\(String(describing: type(of: error)), privacy: .public)")
+            Self.logger.error("provider=WeatherKit request=failed category=\(self.errorCategory?.rawValue ?? "unknown", privacy: .public) domain=\(nsError.domain, privacy: .public) code=\(nsError.code, privacy: .public)")
         }
     }
 
@@ -229,6 +293,7 @@ final class TripWeatherService {
         hourlyForecast = entry.forecast
         dailyForecast = entry.dailyForecast
         state = entry.state
+        errorCategory = entry.errorCategory
     }
 }
 

@@ -10,7 +10,16 @@ enum UITestConfiguration {
 
     static var selectedDate: Date? {
         guard isEnabled else { return nil }
+        if ProcessInfo.processInfo.arguments.contains("--ui-weather-out-of-range")
+            || ProcessInfo.processInfo.arguments.contains("--ui-weather-no-data") {
+            return TripCalendar.date(2026, 9, 9, hour: 12)
+        }
         return TripCalendar.date(2026, 9, 6, hour: 12)
+    }
+
+    static var weatherNow: Date? {
+        guard isEnabled, ProcessInfo.processInfo.arguments.contains("--ui-weather-no-data") else { return nil }
+        return TripCalendar.date(2026, 9, 9, hour: 12)
     }
 
     static func resetDocumentsIfRequested() {
@@ -20,4 +29,9 @@ enum UITestConfiguration {
         ["discovery.maxDistance", "discovery.minimumRating", "discovery.minimumReviews", "discovery.openNow"]
             .forEach { UserDefaults.standard.removeObject(forKey: $0) }
     }
+}
+
+struct UITestWeatherProvider: TripWeatherProviding {
+    func hourlyWeather(latitude: Double, longitude: Double) async throws -> [TripHourWeather] { [] }
+    func dailyWeather(latitude: Double, longitude: Double) async throws -> [TripDayWeather] { [] }
 }

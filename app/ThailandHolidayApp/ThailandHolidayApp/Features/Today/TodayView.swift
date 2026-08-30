@@ -94,6 +94,7 @@ struct TodayView: View {
                         forecast: weatherService.hourlyForecast,
                         dailyForecast: weatherService.dailyForecast,
                         state: weatherService.state,
+                        errorCategory: weatherService.errorCategory,
                         timeZone: trip.timeZone
                     )
 
@@ -111,7 +112,7 @@ struct TodayView: View {
                 }
 
                 if !flights.isEmpty || !transfers.isEmpty || !ferries.isEmpty || !trains.isEmpty || !rentalVehicles.isEmpty {
-                    sectionHeader("Volgende verplaatsing")
+                    sectionHeader("Transport").accessibilityIdentifier("todaySection.transport")
                     ForEach(TodayItemSorter.sorted(flights.map(ManagedTripItem.flight)
                         + transfers.map(ManagedTripItem.transfer) + ferries.map(ManagedTripItem.ferry)
                         + trains.map(ManagedTripItem.train) + rentalVehicles.map(ManagedTripItem.rentalVehicle))) { item in
@@ -123,6 +124,7 @@ struct TodayView: View {
                 }
 
                 if let accommodation {
+                    sectionHeader("Accommodation").accessibilityIdentifier("todaySection.accommodation")
                     TripStatusCard(destination: accommodationDestination, accommodation: accommodation,
                                    timeZone: trip.timeZone,
                                    coverAction: { coverTarget = .accommodation(accommodation) })
@@ -135,7 +137,8 @@ struct TodayView: View {
                 suggestionsSection()
             }
             .padding(.horizontal, 20)
-            .padding(.bottom, 32)
+            .padding(.bottom, 96)
+            .accessibilityIdentifier("todayScrollableContent")
         }
         .background(Color.travelBackground)
         .id(TripCalendar.calendar(in: trip.timeZone).startOfDay(for: selectedDate))
@@ -197,7 +200,8 @@ struct TodayView: View {
                 currentLocation: current, destination: tripStore.destination(for: selectedDate))
         weatherLocation = location
         guard let location else { return }
-        await weatherService.refresh(location: location, date: selectedDate, timeZone: trip.timeZone)
+        await weatherService.refresh(location: location, date: selectedDate, timeZone: trip.timeZone,
+                                     now: UITestConfiguration.weatherNow ?? .now)
     }
 
     private func plannedItems(on date: Date) -> [ManagedTripItem] {
@@ -220,7 +224,7 @@ struct TodayView: View {
     private func planningSection(activities: [Activity], restaurants: [RestaurantReservation],
                                  otherItems: [TripEvent], timeZone: TimeZone) -> some View {
         VStack(alignment: .leading, spacing: 12) {
-            sectionHeader("Planning vandaag")
+            sectionHeader("Planning").accessibilityIdentifier("todaySection.planning")
 
             if activities.isEmpty && restaurants.isEmpty && otherItems.isEmpty {
                 ContentUnavailableView(
