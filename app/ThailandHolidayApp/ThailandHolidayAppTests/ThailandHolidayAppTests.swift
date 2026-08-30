@@ -1,5 +1,6 @@
 import Foundation
 import MapKit
+import SwiftUI
 import Testing
 import UIKit
 @testable import ThailandHolidayApp
@@ -46,6 +47,17 @@ struct ThailandHolidayAppTests {
         let info = AppBundleInfo(infoDictionary: [:])
 
         #expect(info.appName == "Reizz")
+    }
+
+    @Test func reizzThemeProvidesExactLightAndDarkSemanticColors() throws {
+        let light = UITraitCollection(userInterfaceStyle: .light)
+        let dark = UITraitCollection(userInterfaceStyle: .dark)
+
+        #expect(try rgba(UIColor(ReizzColors.brandForeground).resolvedColor(with: light)) == [0, 48, 73, 255])
+        #expect(try rgba(UIColor(ReizzColors.brandForeground).resolvedColor(with: dark)) == [102, 155, 188, 255])
+        #expect(try rgba(UIColor(ReizzColors.accent).resolvedColor(with: light)) == [251, 139, 36, 255])
+        #expect(try rgba(UIColor(ReizzColors.background).resolvedColor(with: light)) == [255, 255, 255, 255])
+        #expect(try rgba(UIColor(ReizzColors.background).resolvedColor(with: dark)) == [0, 0, 0, 255])
     }
 
     @Test func currentReleaseInfoContainsDiscoverChangelog() {
@@ -2338,6 +2350,15 @@ struct ThailandHolidayAppTests {
             context.fill(CGRect(x: 0, y: 0, width: 40, height: 30))
         }
         return image.pngData()!
+    }
+
+    private func rgba(_ color: UIColor) throws -> [Int] {
+        var red: CGFloat = 0
+        var green: CGFloat = 0
+        var blue: CGFloat = 0
+        var alpha: CGFloat = 0
+        try #require(color.getRed(&red, green: &green, blue: &blue, alpha: &alpha))
+        return [red, green, blue, alpha].map { Int(($0 * 255).rounded()) }
     }
 
     private func temporaryDirectory(named prefix: String) -> URL {

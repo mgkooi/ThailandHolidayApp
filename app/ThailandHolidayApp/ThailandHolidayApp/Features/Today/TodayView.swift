@@ -45,7 +45,6 @@ struct TodayView: View {
                 }
             }
             .navigationTitle("Vandaag")
-            .toolbar { TripContextToolbar() }
             .task(id: weatherRequestKey) {
                 await refreshWeather()
             }
@@ -75,28 +74,35 @@ struct TodayView: View {
         let otherItems = tripStore.otherItems(on: selectedDate)
 
         return ScrollView {
-            LazyVStack(alignment: .leading, spacing: 24) {
+            LazyVStack(alignment: .leading, spacing: 18) {
                 TodayHeader(
                     date: selectedDate,
-                    locationName: todayLocationName(accommodation: accommodation, destination: accommodationDestination),
                     timeZone: trip.timeZone,
                     canGoToPreviousDay: TodayDateSelection.canMove(selectedDate, by: -1, in: trip),
                     canGoToNextDay: TodayDateSelection.canMove(selectedDate, by: 1, in: trip),
                     previousDayAction: { moveSelectedDate(by: -1, in: trip) },
                     nextDayAction: { moveSelectedDate(by: 1, in: trip) },
-                    dateAction: { isCalendarPresented = true },
-                    locationAction: openDailyLocationInMap
+                    dateAction: { isCalendarPresented = true }
                 )
 
                 if let weatherLocation {
-                    WeatherCard(
-                        destinationName: weatherLocation.name,
-                        forecast: weatherService.hourlyForecast,
-                        dailyForecast: weatherService.dailyForecast,
-                        state: weatherService.state,
-                        errorCategory: weatherService.errorCategory,
-                        timeZone: trip.timeZone
-                    )
+                    VStack(alignment: .leading, spacing: 8) {
+                        WeatherCard(
+                            destinationName: weatherLocation.name,
+                            forecast: weatherService.hourlyForecast,
+                            dailyForecast: weatherService.dailyForecast,
+                            state: weatherService.state,
+                            errorCategory: weatherService.errorCategory,
+                            timeZone: trip.timeZone
+                        )
+                        .accessibilityIdentifier("todayWeatherCard")
+
+                        if let locationName = todayLocationName(accommodation: accommodation,
+                                                                destination: accommodationDestination) {
+                            TodayLocationRow(name: locationName, action: openDailyLocationInMap)
+                                .accessibilityIdentifier("todayLocationRow")
+                        }
+                    }
 
                 } else {
                     if activities.isEmpty && restaurants.isEmpty && otherItems.isEmpty && accommodation == nil
@@ -139,8 +145,9 @@ struct TodayView: View {
             .padding(.horizontal, 20)
             .padding(.bottom, 96)
             .accessibilityIdentifier("todayScrollableContent")
+            .accessibilityValue(trip.name)
         }
-        .background(Color.travelBackground)
+        .background(Color.reizzBackground)
         .id(TripCalendar.calendar(in: trip.timeZone).startOfDay(for: selectedDate))
         .transition(.asymmetric(insertion: .move(edge: navigationDirection > 0 ? .trailing : .leading).combined(with: .opacity),
                                 removal: .move(edge: navigationDirection > 0 ? .leading : .trailing).combined(with: .opacity)))
@@ -342,7 +349,7 @@ struct TodayView: View {
     private func sectionHeader(_ title: String) -> some View {
         Text(title)
             .font(.title3.weight(.bold))
-            .foregroundStyle(.primary)
+            .foregroundStyle(Color.reizzBrandForeground)
     }
 }
 

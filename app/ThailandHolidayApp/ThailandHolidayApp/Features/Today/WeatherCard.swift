@@ -21,10 +21,12 @@ struct WeatherCard: View {
             HStack {
                 Image(systemName: weatherSymbol)
                     .font(.title2)
-                    .symbolRenderingMode(.multicolor)
+                    .symbolRenderingMode(.hierarchical)
+                    .foregroundStyle(Color.reizzBrandForeground)
                     .frame(width: 34)
                 VStack(alignment: .leading, spacing: 2) {
                     Text(primaryText).font(.title3.bold()).monospacedDigit()
+                        .foregroundStyle(Color.reizzPrimaryText)
                         .accessibilityIdentifier("weatherPrimary")
                     Text(destinationName).font(.caption).foregroundStyle(.secondary).lineLimit(1)
                 }
@@ -64,7 +66,7 @@ struct WeatherCard: View {
             }
         }
         .padding(14)
-        .background(.thinMaterial, in: RoundedRectangle(cornerRadius: 18, style: .continuous))
+        .background(Color.reizzCardBackground, in: RoundedRectangle(cornerRadius: 18, style: .continuous))
         .travelCardShadow()
         .accessibilityElement(children: .contain)
     }

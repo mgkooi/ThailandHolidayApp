@@ -2,19 +2,18 @@ import SwiftUI
 
 struct TodayHeader: View {
     let date: Date
-    let locationName: String?
     let timeZone: TimeZone
     let canGoToPreviousDay: Bool
     let canGoToNextDay: Bool
     let previousDayAction: () -> Void
     let nextDayAction: () -> Void
     let dateAction: () -> Void
-    let locationAction: () -> Void
 
     var body: some View {
         VStack(alignment: .leading, spacing: 4) {
             Text("Vandaag")
                 .font(.largeTitle.bold())
+                .foregroundStyle(Color.reizzPrimaryText)
             HStack(spacing: 6) {
                 dateNavigationButton(
                     symbol: "chevron.left",
@@ -36,19 +35,9 @@ struct TodayHeader: View {
                     action: nextDayAction
                 )
             }
-            if let locationName {
-                Button(action: locationAction) {
-                    HStack(spacing: 5) {
-                        Label(locationName, systemImage: "location.fill")
-                        Image(systemName: "chevron.right").font(.caption)
-                    }
-                    .font(.subheadline.weight(.semibold)).foregroundStyle(Color.travelTeal)
-                }
-                .accessibilityLabel("Open \(locationName) op kaart")
-            }
         }
         .frame(maxWidth: .infinity, alignment: .leading)
-        .padding(.top, 12)
+        .padding(.top, 2)
         .accessibilityElement(children: .contain)
     }
 
@@ -65,9 +54,29 @@ struct TodayHeader: View {
                 .contentShape(Rectangle())
         }
         .buttonStyle(.plain)
-        .foregroundStyle(isEnabled ? Color.travelTeal : Color.secondary.opacity(0.35))
+        .foregroundStyle(isEnabled ? Color.reizzBrandForeground : Color.secondary.opacity(0.35))
         .disabled(!isEnabled)
         .accessibilityLabel(label)
+    }
+}
+
+struct TodayLocationRow: View {
+    let name: String
+    let action: () -> Void
+
+    var body: some View {
+        Button(action: action) {
+            HStack(spacing: 6) {
+                Image(systemName: "location.fill")
+                Text(name).lineLimit(1)
+                Image(systemName: "chevron.right").font(.caption2)
+            }
+            .font(.subheadline.weight(.semibold))
+            .foregroundStyle(Color.reizzBrandForeground)
+            .contentShape(Rectangle())
+        }
+        .buttonStyle(.plain)
+        .accessibilityLabel("Open \(name) op kaart")
     }
 }
 
@@ -97,7 +106,7 @@ struct TodayActionButton: View {
             .font(.body.weight(.semibold))
             .foregroundStyle(.white)
             .frame(width: 38, height: 38)
-            .background(.ultraThinMaterial, in: Circle())
+            .background(Color.reizzAccent.opacity(0.9), in: Circle())
             .overlay { Circle().stroke(.white.opacity(0.24), lineWidth: 0.5) }
             .contentShape(Circle())
     }
@@ -791,13 +800,13 @@ extension View {
 }
 
 extension Color {
-    static let travelTeal = Color(red: 0.02, green: 0.52, blue: 0.55)
+    static let travelTeal = Color.reizzBrandForeground
     static let travelCoral = Color(red: 0.91, green: 0.25, blue: 0.34)
-    static let travelOrange = Color(red: 0.91, green: 0.43, blue: 0.15)
+    static let travelOrange = Color.reizzAccent
     static let travelSun = Color(red: 1.00, green: 0.72, blue: 0.16)
     static let travelGreen = Color(red: 0.20, green: 0.48, blue: 0.25)
     static let travelPurple = Color(red: 0.48, green: 0.29, blue: 0.55)
-    static let travelBackground = Color(uiColor: .systemGroupedBackground)
+    static let travelBackground = Color.reizzBackground
 }
 
 #Preview("Verblijf") {

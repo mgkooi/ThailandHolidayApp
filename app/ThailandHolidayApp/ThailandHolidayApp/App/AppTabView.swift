@@ -36,6 +36,7 @@ struct AppTabView: View {
                 }
                 .tag(AppTab.more)
         }
+        .tint(.reizzAccent)
     }
 }
 

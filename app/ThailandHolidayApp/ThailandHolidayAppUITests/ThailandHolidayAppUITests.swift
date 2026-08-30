@@ -61,6 +61,54 @@ final class ThailandHolidayAppUITests: XCTestCase {
     }
 
     @MainActor
+    func testTodayHasNoTripSelectorAndLocationFollowsWeather() throws {
+        let app = launchIsolatedApp(extraArguments: ["--ui-weather-no-data"])
+        XCTAssertFalse(app.buttons.matching(NSPredicate(format: "label BEGINSWITH 'Actieve reis:'")).firstMatch.exists)
+        let weather = app.descendants(matching: .any)["todayWeatherCard"]
+        let location = app.descendants(matching: .any)["todayLocationRow"]
+        XCTAssertTrue(weather.waitForExistence(timeout: 8))
+        XCTAssertTrue(location.exists)
+        XCTAssertGreaterThanOrEqual(location.frame.minY, weather.frame.maxY)
+        XCTAssertLessThan(location.frame.minY - weather.frame.maxY, 16)
+    }
+
+    @MainActor
+    func testTodayLaunchesInLightAndDarkAppearance() throws {
+        let device = XCUIDevice.shared
+        device.appearance = .light
+        var app = launchIsolatedApp(extraArguments: ["--ui-weather-no-data"])
+        XCTAssertTrue(app.descendants(matching: .any)["todayWeatherCard"].waitForExistence(timeout: 8))
+        app.terminate()
+
+        device.appearance = .dark
+        app = launchIsolatedApp(extraArguments: ["--ui-weather-no-data"])
+        XCTAssertTrue(app.descendants(matching: .any)["todayWeatherCard"].waitForExistence(timeout: 8))
+        device.appearance = .light
+    }
+
+    @MainActor
+    func testSwitchingTripThroughMoreUpdatesTodayActiveTrip() throws {
+        let app = launchIsolatedApp()
+        app.tabBars.buttons["Meer"].tap()
+        app.buttons["Mijn reizen"].tap()
+        XCTAssertTrue(app.navigationBars["Mijn reizen"].waitForExistence(timeout: 5))
+        app.navigationBars["Mijn reizen"].buttons["More"].tap()
+        app.buttons["Nieuwe reis"].tap()
+        let name = app.textFields["Naam"]
+        XCTAssertTrue(name.waitForExistence(timeout: 5))
+        name.tap(); name.typeText("UI Tweede Reis")
+        app.buttons["Bewaar"].tap()
+        XCTAssertTrue(app.staticTexts["UI Tweede Reis"].waitForExistence(timeout: 5))
+        app.buttons["Sluit"].tap()
+
+        app.tabBars.buttons["Vandaag"].tap()
+        let todayContent = app.descendants(matching: .any)["todayScrollableContent"]
+        XCTAssertTrue(todayContent.waitForExistence(timeout: 8))
+        XCTAssertEqual(todayContent.value as? String, "UI Tweede Reis")
+        XCTAssertFalse(app.buttons.matching(NSPredicate(format: "label BEGINSWITH 'Actieve reis:'")).firstMatch.exists)
+    }
+
+    @MainActor
     func testAccommodationCreatedInReisAppearsImmediatelyInVandaag() throws {
         let app = launchIsolatedApp()
         app.tabBars.buttons["Reis"].tap()
