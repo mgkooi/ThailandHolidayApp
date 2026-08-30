@@ -69,8 +69,20 @@ struct DiscoverView: View {
     }
 
     private func chip(_ title: String, selected: Bool, action: @escaping () -> Void) -> some View {
-        Button(title, action: action).font(.subheadline.weight(.semibold)).buttonStyle(.borderedProminent)
-            .tint(selected ? Color.travelTeal : Color.secondary.opacity(0.22))
+        Button(action: action) {
+            HStack(spacing: 5) {
+                if selected { Image(systemName: "checkmark").font(.caption.bold()) }
+                Text(title)
+            }
+            .font(.subheadline.weight(.semibold))
+            .foregroundStyle(selected ? Color.reizzFilterSelectedForeground : Color.reizzFilterInactiveForeground)
+            .padding(.horizontal, 12)
+            .frame(minHeight: 34)
+            .background(selected ? Color.reizzFilterSelectedBackground : Color.reizzFilterInactiveBackground,
+                        in: Capsule())
+        }
+            .buttonStyle(.plain)
+            .accessibilityValue(selected ? "Geselecteerd" : "Niet geselecteerd")
             .accessibilityAddTraits(selected ? .isSelected : [])
     }
 

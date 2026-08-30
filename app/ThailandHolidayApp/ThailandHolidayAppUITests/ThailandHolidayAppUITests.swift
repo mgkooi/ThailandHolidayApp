@@ -34,21 +34,20 @@ final class ThailandHolidayAppUITests: XCTestCase {
     }
 
     @MainActor
-    func testWeatherUnavailableCardShowsInternalDiagnosis() throws {
+    func testWeatherUnavailableCardHidesInternalDiagnosis() throws {
         let app = launchIsolatedApp(extraArguments: ["--ui-weather-no-data"])
         let primary = app.descendants(matching: .any)["weatherPrimary"]
         XCTAssertTrue(primary.waitForExistence(timeout: 8), "Weather card primary text ontbreekt")
         XCTAssertEqual(primary.label, "Nog geen weersverwachting beschikbaar")
-        XCTAssertEqual(app.descendants(matching: .any)["weatherDiagnosis"].label, "Diagnose: noForecastData")
+        XCTAssertFalse(app.descendants(matching: .any)["weatherDiagnosis"].exists)
     }
 
     @MainActor
-    func testWeatherFailureShowsCompactDomainAndCode() throws {
+    func testWeatherFailureHidesDomainAndCode() throws {
         let app = launchIsolatedApp(extraArguments: ["--ui-weather-error-code"])
-        XCTAssertEqual(app.descendants(matching: .any)["weatherDiagnosis"].label,
-                       "Diagnose: weatherKitServiceError")
-        XCTAssertEqual(app.descendants(matching: .any)["weatherDiagnosticCode"].label,
-                       "Code: WeatherKit.WeatherError/2")
+        XCTAssertTrue(app.staticTexts["Weer tijdelijk niet beschikbaar"].waitForExistence(timeout: 8))
+        XCTAssertFalse(app.descendants(matching: .any)["weatherDiagnosis"].exists)
+        XCTAssertFalse(app.descendants(matching: .any)["weatherDiagnosticCode"].exists)
     }
 
     @MainActor
@@ -57,7 +56,7 @@ final class ThailandHolidayAppUITests: XCTestCase {
         app.launchArguments = ["--ui-testing", "--ui-testing-reset", "--ui-weather-out-of-range"]
         app.launch()
         XCTAssertTrue(app.staticTexts["Nog geen weersverwachting beschikbaar voor deze datum"].waitForExistence(timeout: 8))
-        XCTAssertEqual(app.descendants(matching: .any)["weatherDiagnosis"].label, "Diagnose: dateOutOfRange")
+        XCTAssertFalse(app.descendants(matching: .any)["weatherDiagnosis"].exists)
 
         let transport = app.descendants(matching: .any)["todaySection.transport"]
         let accommodation = app.descendants(matching: .any)["todaySection.accommodation"]
@@ -93,6 +92,15 @@ final class ThailandHolidayAppUITests: XCTestCase {
         app = launchIsolatedApp(extraArguments: ["--ui-weather-no-data"])
         XCTAssertTrue(app.descendants(matching: .any)["todayWeatherCard"].waitForExistence(timeout: 8))
         device.appearance = .light
+    }
+
+    @MainActor
+    func testTodayShowsFourHourlySlotsOnlyForToday() throws {
+        let app = launchIsolatedApp(extraArguments: ["--ui-weather-today"])
+        XCTAssertTrue(app.descendants(matching: .any)["weatherHourlySlot.8"].waitForExistence(timeout: 8))
+        for hour in [8, 12, 16, 20] {
+            XCTAssertTrue(app.descendants(matching: .any)["weatherHourlySlot.\(hour)"].exists)
+        }
     }
 
     @MainActor
@@ -242,6 +250,9 @@ final class ThailandHolidayAppUITests: XCTestCase {
         app.buttons["Bekijk alles"].tap()
         XCTAssertTrue(app.navigationBars["Ontdekken"].waitForExistence(timeout: 5))
         XCTAssertTrue(app.buttons["Restaurants"].isSelected)
+        XCTAssertEqual(app.buttons["Restaurants"].value as? String, "Geselecteerd")
+        XCTAssertFalse(app.buttons["Activiteiten"].isSelected)
+        XCTAssertEqual(app.buttons["Activiteiten"].value as? String, "Niet geselecteerd")
         XCTAssertTrue(app.staticTexts["Rond Chiang Mai"].waitForExistence(timeout: 5))
         XCTAssertTrue(app.staticTexts["Restaurants test 1"].waitForExistence(timeout: 5))
 
@@ -284,6 +295,7 @@ final class ThailandHolidayAppUITests: XCTestCase {
         XCTAssertTrue(viewpoints.firstMatch.waitForExistence(timeout: 5))
         viewpoints.firstMatch.tap()
         XCTAssertTrue(viewpoints.firstMatch.isSelected)
+        XCTAssertEqual(viewpoints.firstMatch.value as? String, "Geselecteerd")
         XCTAssertTrue(app.staticTexts["Viewpoints test 1"].waitForExistence(timeout: 5))
 
         app.buttons["Filters"].tap()
@@ -403,12 +415,34 @@ final class ThailandHolidayAppUITests: XCTestCase {
 
         XCTAssertTrue(app.descendants(matching: .any)["appVersionInfo"].waitForExistence(timeout: 5))
         XCTAssertTrue(app.staticTexts["Reizz"].exists)
-        XCTAssertTrue(app.staticTexts["Ontdekken 2.1"].exists)
+        XCTAssertTrue(app.staticTexts["Reizz 1.2"].exists)
         app.descendants(matching: .any)["whatsNewRow"].tap()
 
         XCTAssertTrue(app.navigationBars["Wat is nieuw"].waitForExistence(timeout: 5))
-        XCTAssertTrue(app.staticTexts["Echte previewfoto's bij Ontdekken-resultaten"].exists)
-        XCTAssertTrue(app.staticTexts["Native fallback wanneer geen foto beschikbaar is"].exists)
+        XCTAssertTrue(app.staticTexts["Uurverwachting toegevoegd aan Vandaag"].exists)
+        XCTAssertTrue(app.staticTexts["Licht/donker/systeem thema instelbaar"].exists)
+    }
+
+    @MainActor
+    func testMoreAppearancePickerSwitchesAndPersists() throws {
+        let app = launchIsolatedApp()
+        app.tabBars.buttons["Meer"].tap()
+        XCTAssertTrue(app.staticTexts["Weergave"].waitForExistence(timeout: 5))
+        XCTAssertTrue(app.segmentedControls["appearancePicker"].exists)
+
+        app.buttons["Licht"].tap()
+        XCTAssertTrue(app.buttons["Licht"].isSelected)
+        app.buttons["Donker"].tap()
+        XCTAssertTrue(app.buttons["Donker"].isSelected)
+
+        app.terminate()
+        app.launchArguments = ["--ui-testing"]
+        app.launch()
+        XCTAssertTrue(app.tabBars.buttons["Meer"].waitForExistence(timeout: 15))
+        app.tabBars.buttons["Meer"].tap()
+        XCTAssertTrue(app.buttons["Donker"].isSelected)
+        app.buttons["Systeem"].tap()
+        XCTAssertTrue(app.buttons["Systeem"].isSelected)
     }
 
     @MainActor

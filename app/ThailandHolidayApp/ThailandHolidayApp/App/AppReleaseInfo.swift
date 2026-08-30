@@ -27,14 +27,13 @@ struct AppReleaseInfo: Equatable {
     let releaseNotes: [String]
 
     static let current = AppReleaseInfo(
-        releaseName: "Ontdekken 2.1",
+        releaseName: "Reizz 1.2",
         releaseNotes: [
-            "Echte previewfoto's bij Ontdekken-resultaten",
-            "Visueel verbeterde discovery cards",
-            "Previewfoto's in discovery details",
-            "Previewfoto's bij kaartresultaten waar beschikbaar",
-            "Native fallback wanneer geen foto beschikbaar is",
-            "Diverse stabiliteits- en interfaceverbeteringen"
+            "Uurverwachting toegevoegd aan Vandaag",
+            "WeatherKit-diagnostiek verwijderd uit gebruikersinterface",
+            "Locatieweergave visueel verbeterd",
+            "Licht/donker/systeem thema instelbaar",
+            "Kleine interfaceverbeteringen"
         ]
     )
 }

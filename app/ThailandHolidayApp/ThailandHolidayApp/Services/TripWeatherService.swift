@@ -130,6 +130,12 @@ enum TripWeatherAvailability {
     }
 }
 
+enum TripWeatherPresentation {
+    static func showsHourlyForecast(for date: Date, now: Date, timeZone: TimeZone) -> Bool {
+        TripCalendar.calendar(in: timeZone).isDate(date, inSameDayAs: now)
+    }
+}
+
 protocol TripWeatherProviding: Sendable {
     func hourlyWeather(latitude: Double, longitude: Double) async throws -> [TripHourWeather]
     func dailyWeather(latitude: Double, longitude: Double) async throws -> [TripDayWeather]
@@ -320,7 +326,7 @@ final class TripWeatherService {
             let availableDays = isToday ? [] : try await provider.dailyWeather(latitude: location.latitude, longitude: location.longitude)
             guard !Task.isCancelled, activeKey == key else { return }
             let selected = isToday
-                ? TripWeatherSelector.selectCurrent(from: available, now: now, timeZone: timeZone)
+                ? TripWeatherSelector.selectTodayPayload(from: available, now: now, timeZone: timeZone)
                 : TripWeatherSelector.select(from: available, for: date, timeZone: timeZone)
             dailyForecast = availableDays.first { calendar.isDate($0.date, inSameDayAs: date) }
             let hasForecast = !selected.isEmpty || dailyForecast != nil
@@ -389,7 +395,7 @@ final class TripWeatherService {
 #if DEBUG
         true
 #else
-        Bundle.main.object(forInfoDictionaryKey: "WeatherDiagnosticsEnabled") as? Bool == true
+        false
 #endif
     }
 }
@@ -397,21 +403,38 @@ final class TripWeatherService {
 enum TripWeatherSelector {
     static let requestedHours = [8, 12, 16, 20]
 
+    struct HourlySlot: Identifiable, Equatable {
+        let hour: Int
+        let forecast: TripHourWeather?
+        var id: Int { hour }
+    }
+
+    static func hourlySlots(
+        from forecast: [TripHourWeather],
+        for date: Date,
+        timeZone: TimeZone
+    ) -> [HourlySlot] {
+        let calendar = TripCalendar.calendar(in: timeZone)
+        let day = calendar.startOfDay(for: date)
+        let sameDay = forecast.filter { calendar.isDate($0.date, inSameDayAs: day) }
+
+        return requestedHours.map { hour in
+            guard let target = calendar.date(bySettingHour: hour, minute: 0, second: 0, of: day) else {
+                return HourlySlot(hour: hour, forecast: nil)
+            }
+            let nearest = sameDay
+                .min { abs($0.date.timeIntervalSince(target)) < abs($1.date.timeIntervalSince(target)) }
+                .flatMap { abs($0.date.timeIntervalSince(target)) <= 90 * 60 ? $0 : nil }
+            return HourlySlot(hour: hour, forecast: nearest)
+        }
+    }
+
     static func select(
         from forecast: [TripHourWeather],
         for date: Date,
         timeZone: TimeZone
     ) -> [TripHourWeather] {
-        let calendar = TripCalendar.calendar(in: timeZone)
-        let day = calendar.startOfDay(for: date)
-
-        return requestedHours.compactMap { hour in
-            guard let target = calendar.date(bySettingHour: hour, minute: 0, second: 0, of: day) else { return nil }
-            return forecast
-                .filter { calendar.isDate($0.date, inSameDayAs: day) }
-                .min { abs($0.date.timeIntervalSince(target)) < abs($1.date.timeIntervalSince(target)) }
-                .flatMap { abs($0.date.timeIntervalSince(target)) <= 90 * 60 ? $0 : nil }
-        }
+        hourlySlots(from: forecast, for: date, timeZone: timeZone).compactMap(\.forecast)
     }
 
     static func selectCurrent(from forecast: [TripHourWeather], now: Date,
@@ -422,6 +445,17 @@ enum TripWeatherSelector {
             .sorted { $0.date < $1.date }
             .prefix(4)
             .map { $0 }
+    }
+
+    static func selectTodayPayload(from forecast: [TripHourWeather], now: Date,
+                                   timeZone: TimeZone) -> [TripHourWeather] {
+        let current = forecast
+            .filter { TripCalendar.calendar(in: timeZone).isDate($0.date, inSameDayAs: now) }
+            .min { abs($0.date.timeIntervalSince(now)) < abs($1.date.timeIntervalSince(now)) }
+        let slots = select(from: forecast, for: now, timeZone: timeZone)
+        return ([current].compactMap { $0 } + slots).reduce(into: []) { result, item in
+            if !result.contains(where: { $0.date == item.date }) { result.append(item) }
+        }
     }
 
     static func celsiusText(_ value: Double) -> String {

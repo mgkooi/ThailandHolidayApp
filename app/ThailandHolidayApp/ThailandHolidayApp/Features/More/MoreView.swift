@@ -2,6 +2,7 @@ import SwiftUI
 
 struct MoreView: View {
     @State private var showsTrips = false
+    @AppStorage(AppAppearance.storageKey) private var appearanceValue = AppAppearance.system.rawValue
     private let bundleInfo = AppBundleInfo.current
     private let releaseInfo = AppReleaseInfo.current
 
@@ -9,6 +10,18 @@ struct MoreView: View {
         NavigationStack {
             List {
                 Button { showsTrips = true } label: { Label("Mijn reizen", systemImage: "suitcase.rolling") }
+
+                Section("Weergave") {
+                    Picker("Thema", selection: $appearanceValue) {
+                        ForEach(AppAppearance.allCases) { appearance in
+                            Text(appearance.title).tag(appearance.rawValue)
+                        }
+                    }
+                    .pickerStyle(.segmented)
+                    .accessibilityLabel("Thema")
+                    .accessibilityIdentifier("appearancePicker")
+                    .accessibilityHint("Bepaalt of Reizz het systeemthema, het lichte thema of het donkere thema gebruikt")
+                }
 
                 Section("Over deze app") {
                     NavigationLink {

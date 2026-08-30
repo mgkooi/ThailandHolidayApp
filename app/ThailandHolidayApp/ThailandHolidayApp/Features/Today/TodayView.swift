@@ -93,7 +93,10 @@ struct TodayView: View {
                             dailyForecast: weatherService.dailyForecast,
                             state: weatherService.state,
                             errorCategory: weatherService.errorCategory,
-                            errorDetails: weatherService.errorDetails,
+                            forecastDate: selectedDate,
+                            showsHourlyForecast: TripWeatherPresentation.showsHourlyForecast(
+                                for: selectedDate, now: UITestConfiguration.weatherNow ?? .now,
+                                timeZone: trip.timeZone),
                             timeZone: trip.timeZone
                         )
                         .accessibilityIdentifier("todayWeatherCard")

@@ -23,6 +23,35 @@ enum ReizzColors {
     static let divider = Color(uiColor: .separator)
     static let cardBackground = surface
 
+    static let dateNavigationBackground = dynamic(
+        light: UIColor(red: 0, green: 48.0 / 255.0, blue: 73.0 / 255.0, alpha: 1),
+        dark: UIColor(red: 102.0 / 255.0, green: 155.0 / 255.0, blue: 188.0 / 255.0, alpha: 1)
+    )
+    static let dateNavigationForeground = dynamic(
+        light: .white,
+        dark: UIColor(red: 0, green: 48.0 / 255.0, blue: 73.0 / 255.0, alpha: 1)
+    )
+
+    // The light value is PrimaryLight mixed halfway toward white, keeping the
+    // fallback heroes branded without the previous visual weight.
+    static let heroSurface = dynamic(
+        light: UIColor(red: 179.0 / 255.0, green: 205.0 / 255.0, blue: 222.0 / 255.0, alpha: 1),
+        dark: UIColor(red: 0, green: 48.0 / 255.0, blue: 73.0 / 255.0, alpha: 1)
+    )
+    static let heroForeground = dynamic(
+        light: UIColor(red: 0, green: 48.0 / 255.0, blue: 73.0 / 255.0, alpha: 1),
+        dark: .white
+    )
+    static let heroSecondaryForeground = dynamic(
+        light: UIColor(red: 0, green: 48.0 / 255.0, blue: 73.0 / 255.0, alpha: 0.72),
+        dark: UIColor(white: 1, alpha: 0.82)
+    )
+
+    static let filterSelectedBackground = primaryDark
+    static let filterSelectedForeground = Color.white
+    static let filterInactiveBackground = primaryLight
+    static let filterInactiveForeground = primaryDark
+
     private static func dynamic(light: UIColor, dark: UIColor) -> Color {
         Color(uiColor: UIColor { traits in traits.userInterfaceStyle == .dark ? dark : light })
     }
@@ -39,4 +68,13 @@ extension Color {
     static let reizzSecondaryText = ReizzColors.secondaryText
     static let reizzDivider = ReizzColors.divider
     static let reizzCardBackground = ReizzColors.cardBackground
+    static let reizzDateNavigationBackground = ReizzColors.dateNavigationBackground
+    static let reizzDateNavigationForeground = ReizzColors.dateNavigationForeground
+    static let reizzHeroSurface = ReizzColors.heroSurface
+    static let reizzHeroForeground = ReizzColors.heroForeground
+    static let reizzHeroSecondaryForeground = ReizzColors.heroSecondaryForeground
+    static let reizzFilterSelectedBackground = ReizzColors.filterSelectedBackground
+    static let reizzFilterSelectedForeground = ReizzColors.filterSelectedForeground
+    static let reizzFilterInactiveBackground = ReizzColors.filterInactiveBackground
+    static let reizzFilterInactiveForeground = ReizzColors.filterInactiveForeground
 }

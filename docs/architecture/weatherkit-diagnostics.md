@@ -17,8 +17,9 @@ The daily forecast horizon is treated as ten days including today. A date outsid
 reported as “Nog geen weersverwachting beschikbaar voor deze datum” and does not issue a WeatherKit request.
 An in-range request with no matching data is classified as `noForecastData`.
 
-`WeatherDiagnosticsEnabled` in the app Info.plist temporarily enables a subtle `Diagnose: <category>` line in
-distribution builds. Remove or disable this flag after TestFlight validation; Debug builds always show it.
+Weather error categories and safe metadata remain available in internal logs. Reizz 1.2 no longer contains
+`WeatherDiagnosticsEnabled` and never presents technical categories or domain/codes in the user interface.
+Production only distinguishes a technical failure from an out-of-range or otherwise unavailable forecast.
 
 ## Release verification
 

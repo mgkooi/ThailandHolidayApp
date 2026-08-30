@@ -6,16 +6,9 @@ struct WeatherCard: View {
     let dailyForecast: TripDayWeather?
     let state: TripWeatherState
     let errorCategory: WeatherErrorCategory?
-    let errorDetails: WeatherErrorDetails?
+    let forecastDate: Date
+    let showsHourlyForecast: Bool
     let timeZone: TimeZone
-
-    private var diagnosticsEnabled: Bool {
-#if DEBUG
-        true
-#else
-        Bundle.main.object(forInfoDictionaryKey: "WeatherDiagnosticsEnabled") as? Bool == true
-#endif
-    }
 
     var body: some View {
         VStack(alignment: .leading, spacing: 10) {
@@ -41,35 +34,48 @@ struct WeatherCard: View {
             case .loading, .idle:
                 ProgressView().controlSize(.small)
             case .available:
-                if let dailyForecast {
+                if showsHourlyForecast {
+                    hourlySlots
+                } else if let dailyForecast {
                     precipitation(dailyForecast.precipitationChance)
-                } else { HStack(spacing: 8) {
-                    ForEach(forecast) { hour in
-                        VStack(spacing: 9) {
-                            Text(AppFormatters.time(in: timeZone).string(from: hour.date))
-                                .font(.caption.monospacedDigit().weight(.semibold))
-                                .foregroundStyle(.secondary)
-                            Image(systemName: hour.symbolName)
-                                .font(.title3)
-                                .symbolRenderingMode(.multicolor)
-                                .frame(height: 24)
-                            Text(TripWeatherSelector.celsiusText(hour.temperatureCelsius))
-                                .font(.headline.monospacedDigit())
-                            precipitation(hour.precipitationChance)
-                        }
-                        .frame(maxWidth: .infinity)
-                    }
-                } }
-            case .unavailable:
-                diagnosticText
-            case .failed:
-                diagnosticText
+                }
+            case .unavailable, .failed:
+                EmptyView()
             }
         }
         .padding(14)
         .background(Color.reizzCardBackground, in: RoundedRectangle(cornerRadius: 18, style: .continuous))
         .travelCardShadow()
         .accessibilityElement(children: .contain)
+    }
+
+    private var hourlySlots: some View {
+        HStack(spacing: 8) {
+            ForEach(TripWeatherSelector.hourlySlots(from: forecast, for: forecastDate, timeZone: timeZone)) { slot in
+                VStack(spacing: 7) {
+                    Text(String(format: "%02d:00", slot.hour))
+                        .font(.caption.monospacedDigit().weight(.semibold))
+                        .foregroundStyle(.secondary)
+                    if let hour = slot.forecast {
+                        Image(systemName: hour.symbolName)
+                            .font(.title3)
+                            .symbolRenderingMode(.multicolor)
+                            .frame(height: 24)
+                        Text(TripWeatherSelector.celsiusText(hour.temperatureCelsius))
+                            .font(.headline.monospacedDigit())
+                    } else {
+                        Image(systemName: "minus").font(.caption).foregroundStyle(.tertiary).frame(height: 24)
+                        Text("–").font(.headline).foregroundStyle(.tertiary)
+                    }
+                }
+                .frame(maxWidth: .infinity)
+                .accessibilityElement(children: .ignore)
+                .accessibilityLabel(accessibilityLabel(for: slot))
+                .accessibilityIdentifier("weatherHourlySlot.\(slot.hour)")
+            }
+        }
+        .accessibilityElement(children: .contain)
+        .accessibilityIdentifier("weatherHourlyForecast")
     }
 
     @ViewBuilder
@@ -85,7 +91,9 @@ struct WeatherCard: View {
     }
 
     private var primaryText: String {
-        if let dailyForecast { return "\(TripWeatherSelector.celsiusText(dailyForecast.highTemperatureCelsius))" }
+        if let dailyForecast {
+            return "\(TripWeatherSelector.celsiusText(dailyForecast.lowTemperatureCelsius))–\(TripWeatherSelector.celsiusText(dailyForecast.highTemperatureCelsius))"
+        }
         if let current = forecast.first { return TripWeatherSelector.celsiusText(current.temperatureCelsius) }
         if errorCategory == .dateOutOfRange { return "Nog geen weersverwachting beschikbaar voor deze datum" }
         if state == .failed { return "Weer tijdelijk niet beschikbaar" }
@@ -93,19 +101,21 @@ struct WeatherCard: View {
         return "Weer laden…"
     }
 
-    @ViewBuilder private var diagnosticText: some View {
-        if diagnosticsEnabled, let errorCategory {
-            Text("Diagnose: \(errorCategory.rawValue)")
-                .font(.caption2)
-                .foregroundStyle(.tertiary)
-                .accessibilityIdentifier("weatherDiagnosis")
-            if let errorDetails {
-                Text("Code: \(errorDetails.compactCode)")
-                    .font(.caption2.monospaced())
-                    .foregroundStyle(.tertiary)
-                    .lineLimit(1)
-                    .accessibilityIdentifier("weatherDiagnosticCode")
-            }
-        }
+    private func accessibilityLabel(for slot: TripWeatherSelector.HourlySlot) -> String {
+        let time = String(format: "%02d:00", slot.hour)
+        guard let forecast = slot.forecast else { return "\(time), geen verwachting beschikbaar" }
+        return "\(time), \(conditionDescription(for: forecast.symbolName)), \(Int(forecast.temperatureCelsius.rounded())) graden"
+    }
+
+    private func conditionDescription(for symbolName: String) -> String {
+        if symbolName.contains("thunderstorm") { return "onweer" }
+        if symbolName.contains("snow") { return "sneeuw" }
+        if symbolName.contains("rain") || symbolName.contains("drizzle") { return "regen" }
+        if symbolName.contains("fog") || symbolName.contains("haze") { return "mist" }
+        if symbolName.contains("cloud.sun") || symbolName.contains("cloud.moon") { return "half bewolkt" }
+        if symbolName.contains("cloud") { return "bewolkt" }
+        if symbolName.contains("moon") { return "helder" }
+        if symbolName.contains("sun") { return "zonnig" }
+        return "weersverwachting"
     }
 }

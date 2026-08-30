@@ -59,15 +59,41 @@ struct ThailandHolidayAppTests {
         #expect(try rgba(UIColor(ReizzColors.accent).resolvedColor(with: light)) == [251, 139, 36, 255])
         #expect(try rgba(UIColor(ReizzColors.background).resolvedColor(with: light)) == [255, 255, 255, 255])
         #expect(try rgba(UIColor(ReizzColors.background).resolvedColor(with: dark)) == [0, 0, 0, 255])
+        #expect(try rgba(UIColor(ReizzColors.dateNavigationBackground).resolvedColor(with: light)) == [0, 48, 73, 255])
+        #expect(try rgba(UIColor(ReizzColors.dateNavigationForeground).resolvedColor(with: light)) == [255, 255, 255, 255])
+        #expect(try rgba(UIColor(ReizzColors.dateNavigationBackground).resolvedColor(with: dark)) == [102, 155, 188, 255])
+        #expect(try rgba(UIColor(ReizzColors.dateNavigationForeground).resolvedColor(with: dark)) == [0, 48, 73, 255])
+        #expect(try rgba(UIColor(ReizzColors.heroSurface).resolvedColor(with: light)) == [179, 205, 222, 255])
+        #expect(try rgba(UIColor(ReizzColors.heroSurface).resolvedColor(with: dark)) == [0, 48, 73, 255])
+        #expect(try rgba(UIColor(ReizzColors.heroForeground).resolvedColor(with: light)) == [0, 48, 73, 255])
+        #expect(try rgba(UIColor(ReizzColors.heroForeground).resolvedColor(with: dark)) == [255, 255, 255, 255])
+        #expect(try rgba(UIColor(ReizzColors.filterSelectedBackground).resolvedColor(with: light)) == [0, 48, 73, 255])
+        #expect(try rgba(UIColor(ReizzColors.filterSelectedForeground).resolvedColor(with: dark)) == [255, 255, 255, 255])
+        #expect(try rgba(UIColor(ReizzColors.filterInactiveBackground).resolvedColor(with: dark)) == [102, 155, 188, 255])
+        #expect(try rgba(UIColor(ReizzColors.filterInactiveForeground).resolvedColor(with: light)) == [0, 48, 73, 255])
     }
 
-    @Test func currentReleaseInfoContainsDiscoverChangelog() {
+    @Test func currentReleaseInfoContainsReizzTwelveChangelog() {
         let release = AppReleaseInfo.current
 
-        #expect(release.releaseName == "Ontdekken 2.1")
+        #expect(release.releaseName == "Reizz 1.2")
+        #expect(AppBundleInfo.current.version == "1.2")
         #expect(!release.releaseNotes.isEmpty)
-        #expect(release.releaseNotes.contains("Echte previewfoto's bij Ontdekken-resultaten"))
-        #expect(release.releaseNotes.contains("Native fallback wanneer geen foto beschikbaar is"))
+        #expect(release.releaseNotes.contains("Uurverwachting toegevoegd aan Vandaag"))
+        #expect(release.releaseNotes.contains("Licht/donker/systeem thema instelbaar"))
+    }
+
+    @Test func appAppearanceDefaultsMapsAndPersists() throws {
+        let suiteName = "AppAppearanceTests-\(UUID().uuidString)"
+        let defaults = try #require(UserDefaults(suiteName: suiteName))
+        defer { defaults.removePersistentDomain(forName: suiteName) }
+
+        #expect(AppAppearance.stored(in: defaults) == .system)
+        #expect(AppAppearance.system.colorScheme == nil)
+        #expect(AppAppearance.light.colorScheme == .light)
+        #expect(AppAppearance.dark.colorScheme == .dark)
+        AppAppearance.dark.persist(in: defaults)
+        #expect(AppAppearance.stored(in: defaults) == .dark)
     }
 
     @Test func bundledJSONDecodesCompleteTrip() throws {
@@ -314,6 +340,44 @@ struct ThailandHolidayAppTests {
 
         #expect(selected.map { calendar.component(.hour, from: $0.date) } == [8, 12, 16, 20])
         #expect(TripWeatherSelector.celsiusText(28.6) == "29°")
+    }
+
+    @Test func weatherHourlySlotsUseLocalTimeAndKeepMissingSlot() throws {
+        let bangkok = try #require(TimeZone(identifier: "Asia/Bangkok"))
+        let day = TripCalendar.date(2026, 9, 6)
+        let forecasts = [
+            TripHourWeather(date: TripCalendar.date(2026, 9, 6, hour: 7, minute: 45),
+                            temperatureCelsius: 22, symbolName: "sun.max.fill"),
+            TripHourWeather(date: TripCalendar.date(2026, 9, 6, hour: 12, minute: 30),
+                            temperatureCelsius: 26, symbolName: "cloud.sun.fill"),
+            TripHourWeather(date: TripCalendar.date(2026, 9, 6, hour: 20),
+                            temperatureCelsius: 20, symbolName: "moon.fill")
+        ]
+
+        let slots = TripWeatherSelector.hourlySlots(from: forecasts, for: day, timeZone: bangkok)
+        #expect(slots.map(\.hour) == [8, 12, 16, 20])
+        #expect(slots[0].forecast?.temperatureCelsius == 22)
+        #expect(slots[1].forecast?.temperatureCelsius == 26)
+        #expect(slots[2].forecast == nil)
+        #expect(slots[3].forecast?.temperatureCelsius == 20)
+    }
+
+    @Test func todayPayloadContainsCurrentAndFourSlotsFromOneHourlyPayload() {
+        let zone = TripCalendar.thailandTimeZone
+        let day = TripCalendar.date(2026, 9, 6)
+        let forecasts = (0..<24).map { hour in
+            TripHourWeather(date: TripCalendar.date(2026, 9, 6, hour: hour),
+                            temperatureCelsius: Double(hour), symbolName: "cloud.sun.fill")
+        }
+        let now = TripCalendar.date(2026, 9, 6, hour: 14, minute: 20)
+
+        let payload = TripWeatherSelector.selectTodayPayload(from: forecasts, now: now, timeZone: zone)
+        #expect(payload.first?.temperatureCelsius == 14)
+        #expect(TripWeatherSelector.hourlySlots(from: payload, for: day, timeZone: zone)
+            .compactMap(\.forecast).count == 4)
+        #expect(TripWeatherPresentation.showsHourlyForecast(for: day, now: now, timeZone: zone))
+        let tomorrow = TripCalendar.calendar(in: zone).date(byAdding: .day, value: 1, to: day)!
+        #expect(!TripWeatherPresentation.showsHourlyForecast(for: tomorrow, now: now, timeZone: zone))
     }
 
     @Test func accommodationNightsUseLocalCalendarDaysAcrossBoundariesAndTimeZones() throws {

@@ -2,6 +2,7 @@ import SwiftUI
 
 @main
 struct ThailandHolidayAppApp: App {
+    @AppStorage(AppAppearance.storageKey) private var appearanceValue = AppAppearance.system.rawValue
     @State private var tripStore: TripStore
     @State private var weatherService: TripWeatherService
     @State private var startupCoordinator = AppStartupCoordinator()
@@ -62,6 +63,7 @@ struct ThailandHolidayAppApp: App {
             }
             .animation(.easeInOut, value: feedbackState.message)
             .task { await startupCoordinator.start(tripStore: tripStore) }
+            .preferredColorScheme(AppAppearance(rawValue: appearanceValue)?.colorScheme)
         }
     }
 

@@ -24,7 +24,7 @@ struct TodayHeader: View {
                 Spacer()
                 Button(action: dateAction) {
                     Text(AppFormatters.dutchDate(in: timeZone).string(from: date).capitalized)
-                        .font(.subheadline.weight(.semibold)).foregroundStyle(.secondary).multilineTextAlignment(.center)
+                        .font(.subheadline.weight(.semibold)).multilineTextAlignment(.center)
                 }
                 .accessibilityLabel("Kies datum")
                 Spacer()
@@ -35,6 +35,11 @@ struct TodayHeader: View {
                     action: nextDayAction
                 )
             }
+            .foregroundStyle(Color.reizzDateNavigationForeground)
+            .padding(.horizontal, 6)
+            .padding(.vertical, 4)
+            .background(Color.reizzDateNavigationBackground,
+                        in: RoundedRectangle(cornerRadius: 14, style: .continuous))
         }
         .frame(maxWidth: .infinity, alignment: .leading)
         .padding(.top, 2)
@@ -54,7 +59,7 @@ struct TodayHeader: View {
                 .contentShape(Rectangle())
         }
         .buttonStyle(.plain)
-        .foregroundStyle(isEnabled ? Color.reizzBrandForeground : Color.secondary.opacity(0.35))
+        .foregroundStyle(Color.reizzDateNavigationForeground.opacity(isEnabled ? 1 : 0.38))
         .disabled(!isEnabled)
         .accessibilityLabel(label)
     }
@@ -72,10 +77,14 @@ struct TodayLocationRow: View {
                 Image(systemName: "chevron.right").font(.caption2)
             }
             .font(.subheadline.weight(.semibold))
-            .foregroundStyle(Color.reizzBrandForeground)
+            .foregroundStyle(Color.reizzPrimaryLight)
             .contentShape(Rectangle())
         }
         .buttonStyle(.plain)
+        .padding(.horizontal, 11)
+        .frame(minHeight: 34)
+        .background(Color.reizzPrimaryDark, in: Capsule())
+        .overlay { Capsule().stroke(Color.reizzPrimaryLight.opacity(0.34), lineWidth: 1) }
         .accessibilityLabel("Open \(name) op kaart")
     }
 }
@@ -113,6 +122,7 @@ struct TodayActionButton: View {
 }
 
 struct TodayHeroCard<Content: View, Actions: View>: View {
+    @Environment(\.colorScheme) private var colorScheme
     let kind: TripItemKind
     let media: TripMedia?
     var minimumHeight: CGFloat = 196
@@ -131,7 +141,7 @@ struct TodayHeroCard<Content: View, Actions: View>: View {
     var body: some View {
         ZStack(alignment: .bottomLeading) {
             background
-            LinearGradient(colors: [.black.opacity(media == nil ? 0.05 : 0.18), .black.opacity(0.86)],
+            LinearGradient(colors: heroOverlayColors,
                            startPoint: .top, endPoint: .bottom)
             VStack(alignment: .leading, spacing: 9) {
                 content
@@ -140,7 +150,10 @@ struct TodayHeroCard<Content: View, Actions: View>: View {
             .padding(15)
         }
         .frame(maxWidth: .infinity, minHeight: minimumHeight, alignment: .bottomLeading)
-        .foregroundStyle(.white)
+        .foregroundStyle(
+            media == nil ? Color.reizzHeroForeground : .white,
+            media == nil ? Color.reizzHeroSecondaryForeground : .white.opacity(0.82)
+        )
         .clipShape(RoundedRectangle(cornerRadius: 20, style: .continuous))
         .contentShape(RoundedRectangle(cornerRadius: 20, style: .continuous))
         .travelCardShadow()
@@ -162,25 +175,20 @@ struct TodayHeroCard<Content: View, Actions: View>: View {
                     .accessibilityIdentifier("todayHeroCover.fullBleed")
             }
         } else {
-            LinearGradient(colors: [fallbackColor.opacity(0.92), fallbackColor.opacity(0.58)],
-                           startPoint: .topLeading, endPoint: .bottomTrailing)
+            Color.reizzHeroSurface
             Image(systemName: kind.symbolName)
                 .font(.system(size: 86, weight: .semibold))
-                .foregroundStyle(.white.opacity(0.2))
+                .foregroundStyle(Color.reizzHeroForeground.opacity(0.14))
                 .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topTrailing)
                 .padding(24)
         }
     }
 
-    private var fallbackColor: Color {
-        switch kind {
-        case .flight: .travelCoral
-        case .accommodation: .travelTeal
-        case .train, .ferry, .transfer, .rentalVehicle: .travelPurple
-        case .restaurant: .travelCoral
-        case .activity: .travelOrange
-        case .other: .secondary
-        }
+    private var heroOverlayColors: [Color] {
+        guard media != nil else { return [.clear, .clear] }
+        return colorScheme == .dark
+            ? [.black.opacity(0.18), .black.opacity(0.86)]
+            : [.black.opacity(0.08), .black.opacity(0.70)]
     }
 }
 
@@ -194,21 +202,21 @@ struct TripStatusCard: View {
 
     var body: some View {
         TodayHeroCard(kind: .accommodation, media: accommodation.presentationMedia) {
-            Text("JE VERBLIJF").font(.caption.bold()).tracking(1.1).foregroundStyle(.white.opacity(0.8))
+            Text("JE VERBLIJF").font(.caption.bold()).tracking(1.1).foregroundStyle(.secondary)
             Text(accommodation.placeName ?? destination?.name ?? accommodation.name).font(.title2.bold())
             VStack(alignment: .leading, spacing: 5) {
                 Label(accommodation.name, systemImage: "bed.double.fill")
                     .font(.headline)
                 if !accommodation.roomDescription.isEmpty { Text(accommodation.roomDescription)
                     .font(.subheadline)
-                    .foregroundStyle(.white.opacity(0.82)) }
+                    .foregroundStyle(.secondary) }
             }
             HStack(spacing: 16) {
                 Label(dateRange, systemImage: "calendar")
                 Label(nightsText, systemImage: "moon.stars.fill")
             }
             .font(.subheadline.weight(.medium))
-            .foregroundStyle(.white.opacity(0.92))
+            .foregroundStyle(.secondary)
         } actions: {
             if accommodation.location.hasUsableLocation {
                 TodayActionButton(symbol: "location.fill", accessibilityLabel: "Navigeer",
@@ -289,14 +297,14 @@ struct FlightCard: View {
                 Spacer()
                 Text(AppFormatters.shortDate(in: timeZone).string(from: flight.date))
                     .font(.subheadline.weight(.semibold))
-                    .foregroundStyle(.white.opacity(0.82))
+                    .foregroundStyle(.secondary)
             }
             Text("\(flight.airline) · \(flight.flightNumber)").font(.title3.bold())
 
             HStack(alignment: .center, spacing: 12) {
                 flightStop(time: flight.departureTime, airport: flight.originAirport, alignment: .leading)
                 Image(systemName: "arrow.right")
-                    .foregroundStyle(.white.opacity(0.8))
+                    .foregroundStyle(.secondary)
                     .accessibilityHidden(true)
                 flightStop(time: flight.arrivalDateTime(in: timeZone), airport: flight.destinationAirport, alignment: .trailing,
                     date: flight.arrivalDate)
@@ -306,7 +314,7 @@ struct FlightCard: View {
                                                               to: flight.arrivalDateTime(in: timeZone)) {
                 Label(duration, systemImage: "clock")
                     .font(.caption.weight(.semibold))
-                    .foregroundStyle(.white.opacity(0.82))
+                    .foregroundStyle(.secondary)
             }
 
             HStack(spacing: 14) {
@@ -318,7 +326,7 @@ struct FlightCard: View {
                 }
             }
             .font(.caption.weight(.medium))
-            .foregroundStyle(.white.opacity(0.82))
+            .foregroundStyle(.secondary)
         } actions: {
             if let target = ManagedTripItem.flight(flight).navigationTarget, target.location.hasUsableLocation {
                 TodayActionButton(symbol: "location.fill", accessibilityLabel: "Navigeer", action: {
@@ -337,13 +345,13 @@ struct FlightCard: View {
                 .font(.title3.bold())
             Text(airport)
                 .font(.caption)
-                .foregroundStyle(.white.opacity(0.82))
+                .foregroundStyle(.secondary)
                 .lineLimit(2)
                 .multilineTextAlignment(alignment == .leading ? .leading : .trailing)
             if let date, !TripCalendar.calendar(in: timeZone).isDate(date, inSameDayAs: flight.date) {
                 Text(AppFormatters.shortDate(in: timeZone).string(from: date))
                     .font(.caption2)
-                    .foregroundStyle(.white.opacity(0.82))
+                    .foregroundStyle(.secondary)
             }
         }
         .frame(maxWidth: .infinity, alignment: alignment == .leading ? .leading : .trailing)
@@ -390,7 +398,7 @@ struct TodayTransportCard: View {
             if !operatorName.isEmpty { Text(operatorName).font(.title3.bold()) }
             HStack(spacing: 12) {
                 stop(time: departureTime, name: origin, alignment: .leading)
-                Image(systemName: "arrow.right").foregroundStyle(.white.opacity(0.8))
+                Image(systemName: "arrow.right").foregroundStyle(.secondary)
                 stop(time: arrivalTime, name: destination, alignment: .trailing)
             }
             if let duration = durationText { Label(duration, systemImage: "clock").font(.caption.weight(.semibold)) }
@@ -424,7 +432,7 @@ struct TodayTransportCard: View {
     private func stop(time: Date?, name: String, alignment: HorizontalAlignment) -> some View {
         VStack(alignment: alignment, spacing: 4) {
             Text(time.map(AppFormatters.time(in: timeZone).string) ?? "—").font(.title3.bold())
-            Text(name).font(.caption).foregroundStyle(.white.opacity(0.82)).lineLimit(2)
+            Text(name).font(.caption).foregroundStyle(.secondary).lineLimit(2)
                 .multilineTextAlignment(alignment == .leading ? .leading : .trailing)
         }.frame(maxWidth: .infinity, alignment: alignment == .leading ? .leading : .trailing)
     }
