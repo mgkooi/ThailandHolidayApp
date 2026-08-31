@@ -21,6 +21,9 @@ enum UITestConfiguration {
 
     static var weatherNow: Date? {
         guard isEnabled else { return nil }
+        if ProcessInfo.processInfo.arguments.contains("--ui-weather-out-of-range") {
+            return TripCalendar.date(2026, 8, 30, hour: 12)
+        }
         if ProcessInfo.processInfo.arguments.contains("--ui-weather-today") {
             return TripCalendar.date(2026, 9, 9, hour: 14)
         }

@@ -116,6 +116,20 @@ enum ManagedTripItem: Identifiable, Equatable {
         }
     }
 
+    func todayEndDate(in timeZone: TimeZone) -> Date? {
+        switch self {
+        case .flight(let value): value.arrivalDateTime(in: timeZone)
+        case .accommodation(let value): value.checkOut
+        case .transfer(let value): value.endTime
+        case .ferry(let value): value.arrivalTime
+        case .train(let value): value.arrivalTime
+        case .rentalVehicle(let value): value.dropoffTime
+        case .restaurant: nil
+        case .activity(let value): value.endTime
+        case .other(let value): value.endTime
+        }
+    }
+
     var attachmentFilename: String? {
         switch self {
         case .flight(let value): value.attachmentFilename
@@ -257,5 +271,30 @@ enum TodayItemSorter {
             default: return lhs.id.uuidString < rhs.id.uuidString
             }
         }
+    }
+}
+
+enum TodayRelevance: String, Equatable, Sendable {
+    case now = "Nu"
+    case next = "Volgende"
+}
+
+enum TodayRelevanceSelector {
+    static func statuses(for items: [ManagedTripItem], selectedDate: Date, now: Date,
+                         timeZone: TimeZone) -> [UUID: TodayRelevance] {
+        let calendar = TripCalendar.calendar(in: timeZone)
+        guard calendar.isDate(selectedDate, inSameDayAs: now) else { return [:] }
+
+        var result: [UUID: TodayRelevance] = [:]
+        for item in items where item.todayStartDate.map({ $0 <= now }) == true
+            && item.todayEndDate(in: timeZone).map({ now < $0 }) == true {
+            result[item.id] = .now
+        }
+        if let next = items
+            .filter({ $0.todayStartDate.map { $0 > now } == true })
+            .min(by: { ($0.todayStartDate ?? .distantFuture) < ($1.todayStartDate ?? .distantFuture) }) {
+            result[next.id] = .next
+        }
+        return result
     }
 }

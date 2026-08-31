@@ -72,6 +72,13 @@ struct TodayView: View {
         let activities = tripStore.activities(on: selectedDate)
         let restaurants = tripStore.restaurants(on: selectedDate)
         let otherItems = tripStore.otherItems(on: selectedDate)
+        let visibleItems = flights.map(ManagedTripItem.flight) + transfers.map(ManagedTripItem.transfer)
+            + ferries.map(ManagedTripItem.ferry) + trains.map(ManagedTripItem.train)
+            + rentalVehicles.map(ManagedTripItem.rentalVehicle) + activities.map(ManagedTripItem.activity)
+            + restaurants.map(ManagedTripItem.restaurant) + otherItems.map(ManagedTripItem.other)
+            + (accommodation.map { [ManagedTripItem.accommodation($0)] } ?? [])
+        let relevance = TodayRelevanceSelector.statuses(for: visibleItems, selectedDate: selectedDate,
+            now: UITestConfiguration.weatherNow ?? .now, timeZone: trip.timeZone)
 
         return ScrollView {
             LazyVStack(alignment: .leading, spacing: 18) {
@@ -127,23 +134,23 @@ struct TodayView: View {
                         + transfers.map(ManagedTripItem.transfer) + ferries.map(ManagedTripItem.ferry)
                         + trains.map(ManagedTripItem.train) + rentalVehicles.map(ManagedTripItem.rentalVehicle))) { item in
                         if case .flight(let flight) = item {
-                            FlightCard(flight: flight, timeZone: trip.timeZone,
+                            FlightCard(flight: flight, timeZone: trip.timeZone, relevance: relevance[item.id],
                                        coverAction: { coverTarget = item })
-                        } else { transportCard(item, timeZone: trip.timeZone) }
+                        } else { transportCard(item, timeZone: trip.timeZone, relevance: relevance[item.id]) }
                     }
                 }
 
                 if let accommodation {
                     sectionHeader("Accommodation").accessibilityIdentifier("todaySection.accommodation")
                     TripStatusCard(destination: accommodationDestination, accommodation: accommodation,
-                                   timeZone: trip.timeZone,
+                                   timeZone: trip.timeZone, relevance: relevance[accommodation.id],
                                    coverAction: { coverTarget = .accommodation(accommodation) })
                 }
 
                 QuickActionsView(accommodation: accommodation, hasFlights: !flights.isEmpty)
 
                 planningSection(activities: activities, restaurants: restaurants, otherItems: otherItems,
-                                timeZone: trip.timeZone)
+                                timeZone: trip.timeZone, relevance: relevance)
                 suggestionsSection()
             }
             .padding(.horizontal, 20)
@@ -233,7 +240,8 @@ struct TodayView: View {
     }
 
     private func planningSection(activities: [Activity], restaurants: [RestaurantReservation],
-                                 otherItems: [TripEvent], timeZone: TimeZone) -> some View {
+                                 otherItems: [TripEvent], timeZone: TimeZone,
+                                 relevance: [UUID: TodayRelevance]) -> some View {
         VStack(alignment: .leading, spacing: 12) {
             sectionHeader("Planning").accessibilityIdentifier("todaySection.planning")
 
@@ -250,19 +258,19 @@ struct TodayView: View {
                 LazyVStack(spacing: 14) {
                     ForEach(TodayItemSorter.sorted(activities.map(ManagedTripItem.activity)
                         + restaurants.map(ManagedTripItem.restaurant) + otherItems.map(ManagedTripItem.other))) { item in
-                        planningCard(item, timeZone: timeZone)
+                        planningCard(item, timeZone: timeZone, relevance: relevance[item.id])
                     }
                 }
             }
         }
     }
 
-    private func transportCard(_ item: ManagedTripItem, timeZone: TimeZone) -> some View {
-        TodayTransportCard(item: item, timeZone: timeZone, coverAction: { coverTarget = item })
+    private func transportCard(_ item: ManagedTripItem, timeZone: TimeZone, relevance: TodayRelevance?) -> some View {
+        TodayTransportCard(item: item, timeZone: timeZone, relevance: relevance, coverAction: { coverTarget = item })
     }
 
-    private func planningCard(_ item: ManagedTripItem, timeZone: TimeZone) -> some View {
-        TodayPlanningCard(item: item, timeZone: timeZone, coverAction: { coverTarget = item })
+    private func planningCard(_ item: ManagedTripItem, timeZone: TimeZone, relevance: TodayRelevance?) -> some View {
+        TodayPlanningCard(item: item, timeZone: timeZone, relevance: relevance, coverAction: { coverTarget = item })
     }
 
     private func suggestionsSection() -> some View {
@@ -285,7 +293,7 @@ struct TodayView: View {
             } else if nearbyState == .loading {
                 ProgressView("Restaurants zoeken…")
             } else if nearbyRestaurants.isEmpty {
-                Text(nearbyState == .failed ? "Locaties konden tijdelijk niet worden geladen." : "Geen restaurants gevonden.")
+                Text(nearbyState == .failed ? "Locaties zijn offline niet beschikbaar. Probeer het opnieuw zodra je verbinding hebt." : "Geen restaurants gevonden.")
                     .font(.subheadline).foregroundStyle(.secondary)
             } else {
                 ScrollView(.horizontal, showsIndicators: false) {

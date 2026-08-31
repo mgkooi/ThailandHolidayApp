@@ -327,7 +327,7 @@ struct TripItemEditorView: View {
         if !suggestions.isEmpty {
             Menu(isDeparture ? "Kies vertrekluchthaven" : "Kies aankomstluchthaven") {
                 ForEach(suggestions) { airport in
-                    Button("\(airport.code.isEmpty ? airport.name : "\(airport.code) · \(airport.name)") — \(airport.city), \(airport.country)") {
+                    Button("\(airport.compactLabel) — \(airport.city), \(airport.country)") {
                         draft.selectAirport(airport, isDeparture: isDeparture)
                     }
                 }

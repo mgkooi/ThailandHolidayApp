@@ -1379,6 +1379,7 @@ struct ThailandHolidayAppTests {
 
     @Test func airportLookupSupportsCodesAndAmbiguousCities() {
         let lookup = AirportLookup()
+        #expect(lookup.airport(for: " ams ")?.compactLabel == "AMS · Amsterdam Schiphol")
         #expect(lookup.airport(for: "BKK")?.name == "Suvarnabhumi Airport")
         #expect(lookup.airport(for: "DMK")?.name == "Don Mueang International Airport")
         #expect(lookup.airport(for: "CNX")?.city == "Chiang Mai")
@@ -1386,6 +1387,53 @@ struct ThailandHolidayAppTests {
         #expect(lookup.airport(for: "USM")?.city == "Koh Samui")
         #expect(Set(lookup.suggestions(for: "Bangkok").map(\.code)) == Set(["BKK", "DMK"]))
         #expect(lookup.bestMatch(for: "Bangkok") == nil)
+    }
+
+    @Test @MainActor func unknownAirportCodeRemainsAvailableForManualInput() throws {
+        let lookup = AirportLookup()
+        #expect(lookup.airport(for: "XYZ") == nil)
+        #expect(lookup.bestMatch(for: "XYZ") == nil)
+        let draft = TripItemDraft(kind: .flight, trip: try repository.currentTrip())
+        draft.c = "XYZ"
+        #expect(draft.c == "XYZ")
+        #expect(draft.departureAirport == nil)
+    }
+
+    @Test func todayRelevanceSelectsCurrentAndFirstFutureItemOnlyForToday() {
+        let zone = TimeZone(identifier: "Asia/Bangkok")!
+        let now = TripCalendar.date(2026, 9, 9, hour: 12)
+        let current = TripEvent(id: UUID(), date: now,
+            startTime: TripCalendar.date(2026, 9, 9, hour: 11),
+            endTime: TripCalendar.date(2026, 9, 9, hour: 13), title: "Lunch",
+            location: nil, notes: nil, url: nil, attachmentFilename: nil)
+        let next = TripEvent(id: UUID(), date: now,
+            startTime: TripCalendar.date(2026, 9, 9, hour: 14), endTime: nil,
+            title: "Tempel", location: nil, notes: nil, url: nil, attachmentFilename: nil)
+        let later = TripEvent(id: UUID(), date: now,
+            startTime: TripCalendar.date(2026, 9, 9, hour: 16), endTime: nil,
+            title: "Diner", location: nil, notes: nil, url: nil, attachmentFilename: nil)
+        let items = [current, next, later].map(ManagedTripItem.other)
+
+        let today = TodayRelevanceSelector.statuses(for: items, selectedDate: now, now: now, timeZone: zone)
+        #expect(today[current.id] == .now)
+        #expect(today[next.id] == .next)
+        #expect(today[later.id] == nil)
+
+        let futureDay = TripCalendar.date(2026, 9, 10)
+        #expect(TodayRelevanceSelector.statuses(for: items, selectedDate: futureDay,
+            now: now, timeZone: zone).isEmpty)
+    }
+
+    @Test @MainActor func offlineFailureDoesNotRemovePersistedTripData() throws {
+        let fixture = try makeTemporaryStore()
+        defer { try? FileManager.default.removeItem(at: fixture.directory) }
+        let originalTripID = try #require(fixture.store.trip?.id)
+        #expect(WeatherErrorClassifier.category(for: URLError(.notConnectedToInternet)) == .network)
+
+        let reloaded = TripStore(documentsDirectory: fixture.directory)
+        reloaded.load()
+        #expect(reloaded.trip?.id == originalTripID)
+        #expect(reloaded.errorMessage == nil)
     }
 
     @Test @MainActor func structuredFlightAirportsAndBookingReferencePersist() throws {

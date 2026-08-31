@@ -121,6 +121,22 @@ struct TodayActionButton: View {
     }
 }
 
+struct TodayRelevanceBadge: View {
+    let relevance: TodayRelevance?
+
+    var body: some View {
+        if let relevance {
+            Text(relevance.rawValue)
+                .font(.caption2.bold())
+                .padding(.horizontal, 8)
+                .padding(.vertical, 4)
+                .foregroundStyle(relevance == .now ? Color.white : Color.reizzPrimaryDark)
+                .background(relevance == .now ? Color.reizzAccent : Color.reizzPrimaryLight, in: Capsule())
+                .accessibilityIdentifier("todayRelevance.\(relevance.rawValue)")
+        }
+    }
+}
+
 struct TodayHeroCard<Content: View, Actions: View>: View {
     @Environment(\.colorScheme) private var colorScheme
     let kind: TripItemKind
@@ -198,11 +214,12 @@ struct TripStatusCard: View {
     let destination: Destination?
     let accommodation: Accommodation
     let timeZone: TimeZone
+    var relevance: TodayRelevance? = nil
     var coverAction: () -> Void = {}
 
     var body: some View {
         TodayHeroCard(kind: .accommodation, media: accommodation.presentationMedia) {
-            Text("JE VERBLIJF").font(.caption.bold()).tracking(1.1).foregroundStyle(.secondary)
+            HStack { Text("JE VERBLIJF").font(.caption.bold()).tracking(1.1).foregroundStyle(.secondary); Spacer(); TodayRelevanceBadge(relevance: relevance) }
             Text(accommodation.placeName ?? destination?.name ?? accommodation.name).font(.title2.bold())
             VStack(alignment: .leading, spacing: 5) {
                 Label(accommodation.name, systemImage: "bed.double.fill")
@@ -287,6 +304,7 @@ struct TodayDiscoveryCard: View {
 struct FlightCard: View {
     let flight: Flight
     let timeZone: TimeZone
+    var relevance: TodayRelevance? = nil
     var coverAction: () -> Void = {}
 
     var body: some View {
@@ -295,6 +313,7 @@ struct FlightCard: View {
                 Label("Vlucht", systemImage: "airplane")
                     .font(.headline)
                 Spacer()
+                TodayRelevanceBadge(relevance: relevance)
                 Text(AppFormatters.shortDate(in: timeZone).string(from: flight.date))
                     .font(.subheadline.weight(.semibold))
                     .foregroundStyle(.secondary)
@@ -302,11 +321,11 @@ struct FlightCard: View {
             Text("\(flight.airline) · \(flight.flightNumber)").font(.title3.bold())
 
             HStack(alignment: .center, spacing: 12) {
-                flightStop(time: flight.departureTime, airport: flight.originAirport, alignment: .leading)
+                flightStop(time: flight.departureTime, airport: airportLabel(flight.departureAirport, fallback: flight.originAirport), alignment: .leading)
                 Image(systemName: "arrow.right")
                     .foregroundStyle(.secondary)
                     .accessibilityHidden(true)
-                flightStop(time: flight.arrivalDateTime(in: timeZone), airport: flight.destinationAirport, alignment: .trailing,
+                flightStop(time: flight.arrivalDateTime(in: timeZone), airport: airportLabel(flight.arrivalAirport, fallback: flight.destinationAirport), alignment: .trailing,
                     date: flight.arrivalDate)
             }
 
@@ -337,6 +356,10 @@ struct FlightCard: View {
                 destination: AnyView(TripItemEditorView(kind: .flight, itemID: flight.id)))
             TodayActionButton(symbol: "photo.fill", accessibilityLabel: "Wijzig omslag", action: coverAction)
         }
+    }
+
+    private func airportLabel(_ stored: AirportInfo?, fallback: String) -> String {
+        (stored ?? AirportLookup().bestMatch(for: fallback))?.compactLabel ?? fallback
     }
 
     private func flightStop(time: Date, airport: String, alignment: HorizontalAlignment, date: Date? = nil) -> some View {
@@ -390,11 +413,12 @@ struct ActivityHeroCard: View {
 struct TodayTransportCard: View {
     let item: ManagedTripItem
     let timeZone: TimeZone
+    var relevance: TodayRelevance? = nil
     let coverAction: () -> Void
 
     var body: some View {
         TodayHeroCard(kind: item.kind, media: item.presentationMedia, minimumHeight: 188) {
-            Label(item.kind.title, systemImage: item.kind.symbolName).font(.headline)
+            HStack { Label(item.kind.title, systemImage: item.kind.symbolName).font(.headline); Spacer(); TodayRelevanceBadge(relevance: relevance) }
             if !operatorName.isEmpty { Text(operatorName).font(.title3.bold()) }
             HStack(spacing: 12) {
                 stop(time: departureTime, name: origin, alignment: .leading)
@@ -441,11 +465,12 @@ struct TodayTransportCard: View {
 struct TodayPlanningCard: View {
     let item: ManagedTripItem
     let timeZone: TimeZone
+    var relevance: TodayRelevance? = nil
     let coverAction: () -> Void
 
     var body: some View {
         TodayHeroCard(kind: item.kind, media: item.presentationMedia, minimumHeight: 174) {
-            Label(item.kind.title, systemImage: item.kind.symbolName).font(.caption.bold())
+            HStack { Label(item.kind.title, systemImage: item.kind.symbolName).font(.caption.bold()); Spacer(); TodayRelevanceBadge(relevance: relevance) }
             Text(title).font(.title3.bold())
             if let time { Text(time).font(.subheadline.monospacedDigit().weight(.semibold)) }
             if let location { Label(location, systemImage: "mappin").font(.subheadline).lineLimit(2) }

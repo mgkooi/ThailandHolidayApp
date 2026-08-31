@@ -79,6 +79,23 @@ struct AirportInfo: Codable, Equatable, Sendable, Identifiable {
     var location: TripLocation {
         TripLocation(placeName: "\(code) · \(name)", address: address, latitude: latitude, longitude: longitude)
     }
+
+    var compactLabel: String {
+        let compactName: String
+        switch code {
+        case "AMS": compactName = "Amsterdam Schiphol"
+        case "BKK": compactName = "Suvarnabhumi"
+        case "DMK": compactName = "Don Mueang"
+        case "CNX": compactName = "Chiang Mai International"
+        case "URT": compactName = "Surat Thani"
+        case "USM": compactName = "Samui"
+        default:
+            compactName = name
+                .replacingOccurrences(of: " International Airport", with: " International")
+                .replacingOccurrences(of: " Airport", with: "")
+        }
+        return code.isEmpty ? name : "\(code) · \(compactName)"
+    }
 }
 
 struct AirportLookup: Sendable {
@@ -103,7 +120,10 @@ struct AirportLookup: Sendable {
         ,AirportInfo(code:"DOH",name:"Hamad International Airport",city:"Doha",country:"Qatar",address:"Doha, Qatar",latitude:25.2731,longitude:51.6081)
     ]
 
-    func airport(for code: String) -> AirportInfo? { airports.first { $0.code == code.uppercased() } }
+    func airport(for code: String) -> AirportInfo? {
+        let normalized = code.trimmingCharacters(in: .whitespacesAndNewlines).uppercased()
+        return airports.first { $0.code == normalized }
+    }
     func suggestions(for query: String) -> [AirportInfo] {
         let value = query.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !value.isEmpty else { return [] }
@@ -118,8 +138,9 @@ struct AirportLookup: Sendable {
         return matches
     }
     func bestMatch(for query: String) -> AirportInfo? {
-        let matches = suggestions(for: query)
-        let chosen = matches.first(where: { $0.code.caseInsensitiveCompare(query) == .orderedSame })
+        let normalized = query.trimmingCharacters(in: .whitespacesAndNewlines)
+        let matches = suggestions(for: normalized)
+        let chosen = matches.first(where: { $0.code.caseInsensitiveCompare(normalized) == .orderedSame })
             ?? (matches.count == 1 ? matches[0] : nil)
 #if DEBUG
         Self.logger.debug("Airport chosen code=\(chosen?.code ?? "none", privacy: .public) name=\(chosen?.name ?? "none", privacy: .public)")

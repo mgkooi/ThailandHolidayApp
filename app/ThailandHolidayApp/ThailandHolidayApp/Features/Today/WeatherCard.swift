@@ -96,6 +96,7 @@ struct WeatherCard: View {
         }
         if let current = forecast.first { return TripWeatherSelector.celsiusText(current.temperatureCelsius) }
         if errorCategory == .dateOutOfRange { return "Nog geen weersverwachting beschikbaar voor deze datum" }
+        if errorCategory == .network { return "Weer offline niet beschikbaar" }
         if state == .failed { return "Weer tijdelijk niet beschikbaar" }
         if state == .unavailable { return "Nog geen weersverwachting beschikbaar" }
         return "Weer laden…"
